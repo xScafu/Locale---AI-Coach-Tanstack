@@ -57,6 +57,11 @@ problems.put("/:id", async (c) => {
   const id = c.req.param("id");
   const body = await c.req.json();
 
+  const existing = await getProblemById(id);
+  if (!existing) {
+    return c.json({ error: "Problem not found" }, 404);
+  }
+
   await updateProblem(id, {
     phase: body.phase,
     problem: body.problem,
@@ -69,6 +74,12 @@ problems.put("/:id", async (c) => {
 
 problems.delete("/:id", async (c) => {
   const id = c.req.param("id");
+
+  const existing = await getProblemById(id);
+  if (!existing) {
+    return c.json({ error: "Problem not found" }, 404);
+  }
+
   await deleteProblem(id);
 
   return c.json({ ok: true });

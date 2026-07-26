@@ -1,19 +1,10 @@
-import { desc, eq } from "drizzle-orm";
-import { db } from "../db";
-import { carProblems, cars, coachContexts, pilots, setups } from "../db/schema";
-
-export async function buildCoachContext(context: any) {
-  const {
-    pilot,
-
-    car,
-
-    track,
-
-    settings,
-
-    coachMemory,
-  } = context;
+// Prima questa funzione era "async" senza avere nulla da attendere al
+// suo interno, e openai.service.ts la chiamava SENZA await:
+//   const systemPrompt = buildCoachContext(context);
+// systemPrompt era quindi una Promise<string>, non una stringa: il
+// system prompt inviato al modello era "[object Promise]".
+export function buildCoachContext(context: any) {
+  const { pilot, car, track, settings, coachMemory } = context;
 
   return `
 Sei un AI Race Engineer professionale.

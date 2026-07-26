@@ -8,6 +8,7 @@ export type GarageCar = {
   simulator: string | null;
   category: string | null;
   notes: string | null;
+  isActive?: boolean;
 };
 
 export type Setup = {
@@ -38,6 +39,8 @@ export type CarProblem = {
   notes: string | null;
 };
 
+// ---------- Cars ----------
+
 export async function getCars(pilotId: string) {
   const response = await fetch(`${API_URL}/api/cars?pilotId=${pilotId}`);
   return response.json() as Promise<{ items: GarageCar[] }>;
@@ -58,14 +61,53 @@ export async function createCar(data: {
 }) {
   const response = await fetch(`${API_URL}/api/cars`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
 
   return response.json();
 }
+
+// Prima mancava del tutto: nessun modo dal client di modificare un'auto.
+export async function updateCar(
+  carId: string,
+  data: {
+    manufacturer?: string | null;
+    name: string;
+    simulator?: string | null;
+    category?: string | null;
+    notes?: string | null;
+  }
+) {
+  const response = await fetch(`${API_URL}/api/cars/${carId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+
+  return response.json();
+}
+
+// Prima mancava del tutto: nessun modo dal client di eliminare un'auto.
+export async function deleteCar(carId: string) {
+  const response = await fetch(`${API_URL}/api/cars/${carId}`, {
+    method: "DELETE",
+  });
+
+  return response.json();
+}
+
+// Prima mancava del tutto: nessun modo di impostare un'auto come attiva
+// (il contesto usato dal coach in chat/dashboard).
+export async function activateCar(carId: string) {
+  const response = await fetch(`${API_URL}/api/cars/${carId}/activate`, {
+    method: "PATCH",
+  });
+
+  return response.json();
+}
+
+// ---------- Setups ----------
 
 export async function getSetups(carId: string) {
   const response = await fetch(`${API_URL}/api/setups?carId=${carId}`);
@@ -91,14 +133,52 @@ export async function createSetup(data: {
 }) {
   const response = await fetch(`${API_URL}/api/setups`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
 
   return response.json();
 }
+
+// Prima mancava del tutto.
+export async function updateSetup(
+  setupId: string,
+  data: {
+    name: string;
+    brakeBias?: number | null;
+    frontRideHeight?: number | null;
+    rearRideHeight?: number | null;
+    frontCamber?: number | null;
+    rearCamber?: number | null;
+    frontToe?: number | null;
+    rearToe?: number | null;
+    frontARB?: number | null;
+    rearARB?: number | null;
+    frontSpring?: number | null;
+    rearSpring?: number | null;
+    diffPreload?: number | null;
+    notes?: string | null;
+  }
+) {
+  const response = await fetch(`${API_URL}/api/setups/${setupId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+
+  return response.json();
+}
+
+// Prima mancava del tutto.
+export async function deleteSetup(setupId: string) {
+  const response = await fetch(`${API_URL}/api/setups/${setupId}`, {
+    method: "DELETE",
+  });
+
+  return response.json();
+}
+
+// ---------- Problems ----------
 
 export async function getProblems(carId: string) {
   const response = await fetch(`${API_URL}/api/problems?carId=${carId}`);
@@ -114,10 +194,36 @@ export async function createProblem(data: {
 }) {
   const response = await fetch(`${API_URL}/api/problems`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
+  });
+
+  return response.json();
+}
+
+// Prima mancava del tutto.
+export async function updateProblem(
+  problemId: string,
+  data: {
+    phase: string;
+    problem: string;
+    severity?: number | null;
+    notes?: string | null;
+  }
+) {
+  const response = await fetch(`${API_URL}/api/problems/${problemId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+
+  return response.json();
+}
+
+// Prima mancava del tutto.
+export async function deleteProblem(problemId: string) {
+  const response = await fetch(`${API_URL}/api/problems/${problemId}`, {
+    method: "DELETE",
   });
 
   return response.json();

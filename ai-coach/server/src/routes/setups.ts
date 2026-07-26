@@ -67,6 +67,11 @@ setups.put("/:id", async (c) => {
   const id = c.req.param("id");
   const body = await c.req.json();
 
+  const existing = await getSetupById(id);
+  if (!existing) {
+    return c.json({ error: "Setup not found" }, 404);
+  }
+
   await updateSetup(id, {
     name: body.name,
     brakeBias: body.brakeBias ?? null,
@@ -89,6 +94,12 @@ setups.put("/:id", async (c) => {
 
 setups.delete("/:id", async (c) => {
   const id = c.req.param("id");
+
+  const existing = await getSetupById(id);
+  if (!existing) {
+    return c.json({ error: "Setup not found" }, 404);
+  }
+
   await deleteSetup(id);
 
   return c.json({ ok: true });

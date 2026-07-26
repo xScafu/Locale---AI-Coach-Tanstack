@@ -1,6 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import { askCoach } from "../services/openai.service";
 import { saveMessage } from "../repositories/message.repository";
+import { checkMemoryUpdate } from "../services/memory.manager";
 
 const chat = new Hono();
 
@@ -19,7 +21,7 @@ chat.post("/", async (c) => {
   }
 
   await saveMessage({
-    id: crypto.randomUUID(),
+    id: randomUUID(),
     sessionId,
     role: "user",
     content: message,
@@ -28,13 +30,17 @@ chat.post("/", async (c) => {
   const result = await askCoach(message, sessionId);
 
   await saveMessage({
-    id: crypto.randomUUID(),
+    id: randomUUID(),
     sessionId,
     role: "assistant",
     content: result.text,
     inputTokens: result.usage?.input_tokens,
     outputTokens: result.usage?.output_tokens,
   });
+
+  // Prima questa funzione non veniva mai chiamata: il riassunto
+  // automatico della memoria ogni N messaggi era codice morto.
+  await checkMemoryUpdate(sessionId);
 
   return c.json({
     sessionId,

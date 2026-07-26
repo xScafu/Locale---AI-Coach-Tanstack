@@ -9,6 +9,7 @@ import dashboard from "./routes/dashboard.ts";
 import cars from "./routes/cars";
 import setups from "./routes/setups";
 import problems from "./routes/problems";
+import sessions from "./routes/sessions";
 
 const app = new Hono();
 
@@ -16,7 +17,7 @@ app.use(
   "*",
   cors({
     origin: "http://localhost:5173",
-    allowMethods: ["GET", "POST", "OPTIONS"],
+    allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowHeaders: ["Content-Type"],
   })
 );
@@ -33,6 +34,7 @@ app.route("/api/profile", profile);
 app.route("/api/cars", cars);
 app.route("/api/setups", setups);
 app.route("/api/problems", problems);
+app.route("/api/sessions", sessions);
 
 serve(
   {

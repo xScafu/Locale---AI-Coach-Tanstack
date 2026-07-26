@@ -2,7 +2,12 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { createCar, getCars } from "../services/garage.api";
+import {
+  activateCar,
+  createCar,
+  deleteCar,
+  getCars,
+} from "../services/garage.api";
 import { usePilotStore } from "../stores/pilot.store";
 
 export const Route = createFileRoute("/garage")({
@@ -24,6 +29,7 @@ function GaragePage() {
   });
 
   const [saving, setSaving] = useState(false);
+  const [busyCarId, setBusyCarId] = useState<string | null>(null);
 
   const { data, isPending, refetch } = useQuery({
     queryKey: ["cars", pilotId],
@@ -58,6 +64,32 @@ function GaragePage() {
       await queryClient.invalidateQueries({ queryKey: ["cars", pilotId] });
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleActivate(carId: string) {
+    setBusyCarId(carId);
+
+    try {
+      await activateCar(carId);
+      await refetch();
+    } finally {
+      setBusyCarId(null);
+    }
+  }
+
+  async function handleDelete(carId: string) {
+    if (!confirm("Eliminare questa auto? L'azione non è reversibile.")) {
+      return;
+    }
+
+    setBusyCarId(carId);
+
+    try {
+      await deleteCar(carId);
+      await refetch();
+    } finally {
+      setBusyCarId(null);
     }
   }
 
@@ -144,7 +176,17 @@ function GaragePage() {
           <div className="space-y-3">
             {data?.items?.map((car) => (
               <div key={car.id} className="rounded border p-3">
-                <div className="font-medium">{car.name}</div>
+                <div className="flex items-center justify-between">
+                  <div className="font-medium">
+                    {car.name}
+                    {car.isActive && (
+                      <span className="ml-2 rounded bg-green-100 px-2 py-0.5 text-xs text-green-700">
+                        Attiva
+                      </span>
+                    )}
+                  </div>
+                </div>
+
                 <div className="text-sm text-gray-500">
                   {car.manufacturer ?? "Senza marca"} ·{" "}
                   {car.category ?? "Senza categoria"} ·{" "}
@@ -153,7 +195,7 @@ function GaragePage() {
 
                 {car.notes && <div className="mt-2 text-sm">{car.notes}</div>}
 
-                <div className="mt-3">
+                <div className="mt-3 flex flex-wrap gap-3">
                   <Link
                     to="/garage/$carId"
                     params={{ carId: car.id }}
@@ -161,6 +203,24 @@ function GaragePage() {
                   >
                     Apri dettaglio
                   </Link>
+
+                  {!car.isActive && (
+                    <button
+                      className="text-sm text-blue-600 underline disabled:opacity-50"
+                      disabled={busyCarId === car.id}
+                      onClick={() => handleActivate(car.id)}
+                    >
+                      Imposta come attiva
+                    </button>
+                  )}
+
+                  <button
+                    className="text-sm text-red-600 underline disabled:opacity-50"
+                    disabled={busyCarId === car.id}
+                    onClick={() => handleDelete(car.id)}
+                  >
+                    Elimina
+                  </button>
                 </div>
               </div>
             ))}

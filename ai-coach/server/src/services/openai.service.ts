@@ -8,14 +8,14 @@ const client = new OpenAI({
   apiKey: env.OPENAI_API_KEY,
 });
 
-export async function askCoach(
-  message: string,
-  pilotId: string,
-  sessionId?: string
-) {
+// Prima la firma era (message, pilotId, sessionId) ma chat.ts chiamava
+// askCoach(message, sessionId): il vero sessionId finiva nel parametro
+// "pilotId" e loadAppContext(sessionId) riceveva sempre undefined,
+// quindi la memoria di sessione non veniva mai caricata.
+export async function askCoach(message: string, sessionId?: string) {
   const context = await loadAppContext(sessionId);
 
-  const systemPrompt = buildCoachContext(context);
+  const systemPrompt = await buildCoachContext(context);
 
   const response = await client.responses.create({
     model: context.settings?.openAiModel ?? "gpt-5-mini",
@@ -23,13 +23,10 @@ export async function askCoach(
     input: [
       {
         role: "system",
-
         content: systemPrompt,
       },
-
       {
         role: "user",
-
         content: message,
       },
     ],

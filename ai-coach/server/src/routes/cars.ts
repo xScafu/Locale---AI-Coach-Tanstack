@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import {
+  activateCar,
   createCar,
   deleteCar,
   getCarById,
@@ -58,6 +59,11 @@ cars.put("/:id", async (c) => {
   const id = c.req.param("id");
   const body = await c.req.json();
 
+  const existing = await getCarById(id);
+  if (!existing) {
+    return c.json({ error: "Car not found" }, 404);
+  }
+
   await updateCar(id, {
     manufacturer: body.manufacturer ?? null,
     name: body.name,
@@ -69,8 +75,29 @@ cars.put("/:id", async (c) => {
   return c.json({ ok: true });
 });
 
+// Imposta questa auto come "attiva": è quella che il coach userà come
+// contesto di default in chat/dashboard.
+cars.patch("/:id/activate", async (c) => {
+  const id = c.req.param("id");
+
+  const existing = await getCarById(id);
+  if (!existing) {
+    return c.json({ error: "Car not found" }, 404);
+  }
+
+  await activateCar(id);
+
+  return c.json({ ok: true });
+});
+
 cars.delete("/:id", async (c) => {
   const id = c.req.param("id");
+
+  const existing = await getCarById(id);
+  if (!existing) {
+    return c.json({ error: "Car not found" }, 404);
+  }
+
   await deleteCar(id);
 
   return c.json({ ok: true });

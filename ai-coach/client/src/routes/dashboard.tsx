@@ -1,13 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-export const Route = createFileRoute("/dashboard")({
-  component: Dashboard,
-});
+// Prima il componente Dashboard chiamava se stesso (<Dashboard /> dentro
+// Dashboard), causando "Maximum call stack size exceeded" al primo
+// render. La vera pagina esisteva già in pages/Dashboard.tsx ma non era
+// collegata: bastava importarla.
+import DashboardPage from "../pages/Dashboard";
 
-function Dashboard() {
-  return (
-    <div className="p-8">
-      <Dashboard />
-    </div>
-  );
-}
+export const Route = createFileRoute("/dashboard")({
+  component: DashboardPage,
+});

@@ -1,8 +1,6 @@
+import { eq } from "drizzle-orm";
 import { db } from "../db";
-
-import { messages, coachContexts } from "../db/schema";
-
-import { eq, asc } from "drizzle-orm";
+import { coachContexts } from "../db/schema";
 
 export async function getSessionMemory(sessionId: string) {
   const context = await db
