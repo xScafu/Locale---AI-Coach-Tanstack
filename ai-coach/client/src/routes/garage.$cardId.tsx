@@ -15,7 +15,7 @@ import {
   updateSetup,
   type CarProblem,
   type Setup,
-} from "../services/garage.api";
+} from "../services/garage.api.ts";
 
 export const Route = createFileRoute("/garage/$cardId")({
   component: GarageCarDetailPage,

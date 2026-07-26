@@ -10,6 +10,6 @@ export async function createSession() {
     title: "Nuova sessione",
     createdAt: Date.now(),
   });
-
+  console.log(id);
   return id;
 }

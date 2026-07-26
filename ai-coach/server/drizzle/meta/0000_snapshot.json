@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "0d271c8e-f185-41da-babc-7111a4da1462",
+  "id": "08fa9b32-ec94-4474-a479-8871ece08c7f",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "car_problems": {

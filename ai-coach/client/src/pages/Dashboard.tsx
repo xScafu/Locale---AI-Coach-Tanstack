@@ -3,6 +3,7 @@ import { useDashboard } from "../hooks/useDashboard";
 
 export default function Dashboard() {
   const { data, isPending } = useDashboard();
+  const fullCarName = data?.car?.manufacturer + " " + data?.car?.name;
 
   if (isPending) {
     return <p>Caricamento...</p>;
@@ -19,7 +20,7 @@ export default function Dashboard() {
           subtitle={data?.pilot?.level}
         />
 
-        <DashboardCard title="Auto" value={data?.car?.name ?? "Nessuna auto"} />
+        <DashboardCard title="Auto" value={fullCarName ?? "Nessuna auto"} />
 
         <DashboardCard
           title="Circuito"

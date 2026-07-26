@@ -7,7 +7,7 @@ import {
   createCar,
   deleteCar,
   getCars,
-} from "../services/garage.api";
+} from "../services/garage.api.ts";
 import { usePilotStore } from "../stores/pilot.store";
 
 export const Route = createFileRoute("/garage")({
