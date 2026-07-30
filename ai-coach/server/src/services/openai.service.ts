@@ -8,34 +8,54 @@ const client = new OpenAI({
   apiKey: env.OPENAI_API_KEY,
 });
 
-// Prima la firma era (message, pilotId, sessionId) ma chat.ts chiamava
-// askCoach(message, sessionId): il vero sessionId finiva nel parametro
-// "pilotId" e loadAppContext(sessionId) riceveva sempre undefined,
-// quindi la memoria di sessione non veniva mai caricata.
-export async function askCoach(message: string, sessionId?: string) {
-  const context = await loadAppContext(sessionId);
+const DEFAULT_MAX_OUTPUT_TOKENS = 4000;
 
-  const systemPrompt = await buildCoachContext(context);
+export async function askCoach(message: string, sessionId?: string) {
+  const context = await loadAppContext(sessionId, message);
+
+  const systemPrompt = buildCoachContext(context);
 
   const response = await client.responses.create({
     model: context.settings?.openAiModel ?? "gpt-5-mini",
 
     input: [
-      {
-        role: "system",
-        content: systemPrompt,
-      },
-      {
-        role: "user",
-        content: message,
-      },
+      { role: "system", content: systemPrompt },
+      { role: "user", content: message },
     ],
 
-    max_output_tokens: context.settings?.maxOutputTokens ?? 1000,
+    max_output_tokens:
+      context.settings?.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
+
+    // Prima il campo "temperature" delle impostazioni veniva salvato
+    // ma mai passato qui: il form Impostazioni sembrava funzionare ma
+    // non aveva alcun effetto reale sulle risposte.
+    temperature: context.settings?.temperature ?? 0.7,
   });
 
+  let text = response.output_text ?? "";
+
+  if (!text && Array.isArray((response as any).output)) {
+    text = (response as any).output
+      .flatMap((item: any) => item.content ?? [])
+      .filter((part: any) => part.type === "output_text")
+      .map((part: any) => part.text)
+      .join("\n")
+      .trim();
+  }
+
+  const truncated =
+    (response as any).status === "incomplete" &&
+    (response as any).incomplete_details?.reason === "max_output_tokens";
+
+  if (!text) {
+    text = truncated
+      ? "Ho esaurito il budget di risposta prima di completare la risposta. Prova a riformulare la domanda in modo più mirato, oppure alza 'maxOutputTokens' nelle impostazioni."
+      : "Non sono riuscito a generare una risposta. Riprova tra qualche secondo.";
+  }
+
   return {
-    text: response.output_text,
+    text,
     usage: response.usage,
+    truncated,
   };
 }

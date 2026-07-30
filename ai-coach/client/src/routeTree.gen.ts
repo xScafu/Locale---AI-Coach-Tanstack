@@ -13,11 +13,15 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ChatRouteImport } from './routes/chat'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as GarageRouteImport } from './routes/garage'
+import { Route as KnowledgeRouteImport } from './routes/knowledge'
 import { Route as ProfileRouteImport } from './routes/profile'
+import { Route as SessionsRouteImport } from './routes/sessions'
 import { Route as SettingsRouteImport } from './routes/settings'
-import { Route as TelemteryRouteImport } from './routes/telemtery'
+import { Route as TelemetryRouteImport } from './routes/telemetry'
+import { Route as TracksRouteImport } from './routes/tracks'
 import { Route as VoiceRouteImport } from './routes/voice'
-import { Route as GarageCardIdRouteImport } from './routes/garage.$cardId'
+import { Route as GarageIndexRouteImport } from './routes/garage.index'
+import { Route as GarageCarIdRouteImport } from './routes/garage.$carId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -39,9 +43,19 @@ const GarageRoute = GarageRouteImport.update({
   path: '/garage',
   getParentRoute: () => rootRouteImport,
 } as any)
+const KnowledgeRoute = KnowledgeRouteImport.update({
+  id: '/knowledge',
+  path: '/knowledge',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProfileRoute = ProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SessionsRoute = SessionsRouteImport.update({
+  id: '/sessions',
+  path: '/sessions',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -49,9 +63,14 @@ const SettingsRoute = SettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
-const TelemteryRoute = TelemteryRouteImport.update({
-  id: '/telemtery',
-  path: '/telemtery',
+const TelemetryRoute = TelemetryRouteImport.update({
+  id: '/telemetry',
+  path: '/telemetry',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TracksRoute = TracksRouteImport.update({
+  id: '/tracks',
+  path: '/tracks',
   getParentRoute: () => rootRouteImport,
 } as any)
 const VoiceRoute = VoiceRouteImport.update({
@@ -59,9 +78,14 @@ const VoiceRoute = VoiceRouteImport.update({
   path: '/voice',
   getParentRoute: () => rootRouteImport,
 } as any)
-const GarageCardIdRoute = GarageCardIdRouteImport.update({
-  id: '/$cardId',
-  path: '/$cardId',
+const GarageIndexRoute = GarageIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => GarageRoute,
+} as any)
+const GarageCarIdRoute = GarageCarIdRouteImport.update({
+  id: '/$carId',
+  path: '/$carId',
   getParentRoute: () => GarageRoute,
 } as any)
 
@@ -70,22 +94,29 @@ export interface FileRoutesByFullPath {
   '/chat': typeof ChatRoute
   '/dashboard': typeof DashboardRoute
   '/garage': typeof GarageRouteWithChildren
+  '/knowledge': typeof KnowledgeRoute
   '/profile': typeof ProfileRoute
+  '/sessions': typeof SessionsRoute
   '/settings': typeof SettingsRoute
-  '/telemtery': typeof TelemteryRoute
+  '/telemetry': typeof TelemetryRoute
+  '/tracks': typeof TracksRoute
   '/voice': typeof VoiceRoute
-  '/garage/$cardId': typeof GarageCardIdRoute
+  '/garage/$carId': typeof GarageCarIdRoute
+  '/garage/': typeof GarageIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/chat': typeof ChatRoute
   '/dashboard': typeof DashboardRoute
-  '/garage': typeof GarageRouteWithChildren
+  '/knowledge': typeof KnowledgeRoute
   '/profile': typeof ProfileRoute
+  '/sessions': typeof SessionsRoute
   '/settings': typeof SettingsRoute
-  '/telemtery': typeof TelemteryRoute
+  '/telemetry': typeof TelemetryRoute
+  '/tracks': typeof TracksRoute
   '/voice': typeof VoiceRoute
-  '/garage/$cardId': typeof GarageCardIdRoute
+  '/garage/$carId': typeof GarageCarIdRoute
+  '/garage': typeof GarageIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -93,11 +124,15 @@ export interface FileRoutesById {
   '/chat': typeof ChatRoute
   '/dashboard': typeof DashboardRoute
   '/garage': typeof GarageRouteWithChildren
+  '/knowledge': typeof KnowledgeRoute
   '/profile': typeof ProfileRoute
+  '/sessions': typeof SessionsRoute
   '/settings': typeof SettingsRoute
-  '/telemtery': typeof TelemteryRoute
+  '/telemetry': typeof TelemetryRoute
+  '/tracks': typeof TracksRoute
   '/voice': typeof VoiceRoute
-  '/garage/$cardId': typeof GarageCardIdRoute
+  '/garage/$carId': typeof GarageCarIdRoute
+  '/garage/': typeof GarageIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -106,33 +141,44 @@ export interface FileRouteTypes {
     | '/chat'
     | '/dashboard'
     | '/garage'
+    | '/knowledge'
     | '/profile'
+    | '/sessions'
     | '/settings'
-    | '/telemtery'
+    | '/telemetry'
+    | '/tracks'
     | '/voice'
-    | '/garage/$cardId'
+    | '/garage/$carId'
+    | '/garage/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/chat'
     | '/dashboard'
-    | '/garage'
+    | '/knowledge'
     | '/profile'
+    | '/sessions'
     | '/settings'
-    | '/telemtery'
+    | '/telemetry'
+    | '/tracks'
     | '/voice'
-    | '/garage/$cardId'
+    | '/garage/$carId'
+    | '/garage'
   id:
     | '__root__'
     | '/'
     | '/chat'
     | '/dashboard'
     | '/garage'
+    | '/knowledge'
     | '/profile'
+    | '/sessions'
     | '/settings'
-    | '/telemtery'
+    | '/telemetry'
+    | '/tracks'
     | '/voice'
-    | '/garage/$cardId'
+    | '/garage/$carId'
+    | '/garage/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -140,9 +186,12 @@ export interface RootRouteChildren {
   ChatRoute: typeof ChatRoute
   DashboardRoute: typeof DashboardRoute
   GarageRoute: typeof GarageRouteWithChildren
+  KnowledgeRoute: typeof KnowledgeRoute
   ProfileRoute: typeof ProfileRoute
+  SessionsRoute: typeof SessionsRoute
   SettingsRoute: typeof SettingsRoute
-  TelemteryRoute: typeof TelemteryRoute
+  TelemetryRoute: typeof TelemetryRoute
+  TracksRoute: typeof TracksRoute
   VoiceRoute: typeof VoiceRoute
 }
 
@@ -176,11 +225,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof GarageRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/knowledge': {
+      id: '/knowledge'
+      path: '/knowledge'
+      fullPath: '/knowledge'
+      preLoaderRoute: typeof KnowledgeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/profile': {
       id: '/profile'
       path: '/profile'
       fullPath: '/profile'
       preLoaderRoute: typeof ProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sessions': {
+      id: '/sessions'
+      path: '/sessions'
+      fullPath: '/sessions'
+      preLoaderRoute: typeof SessionsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -190,11 +253,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/telemtery': {
-      id: '/telemtery'
-      path: '/telemtery'
-      fullPath: '/telemtery'
-      preLoaderRoute: typeof TelemteryRouteImport
+    '/telemetry': {
+      id: '/telemetry'
+      path: '/telemetry'
+      fullPath: '/telemetry'
+      preLoaderRoute: typeof TelemetryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/tracks': {
+      id: '/tracks'
+      path: '/tracks'
+      fullPath: '/tracks'
+      preLoaderRoute: typeof TracksRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/voice': {
@@ -204,22 +274,31 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof VoiceRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/garage/$cardId': {
-      id: '/garage/$cardId'
-      path: '/$cardId'
-      fullPath: '/garage/$cardId'
-      preLoaderRoute: typeof GarageCardIdRouteImport
+    '/garage/': {
+      id: '/garage/'
+      path: '/'
+      fullPath: '/garage/'
+      preLoaderRoute: typeof GarageIndexRouteImport
+      parentRoute: typeof GarageRoute
+    }
+    '/garage/$carId': {
+      id: '/garage/$carId'
+      path: '/$carId'
+      fullPath: '/garage/$carId'
+      preLoaderRoute: typeof GarageCarIdRouteImport
       parentRoute: typeof GarageRoute
     }
   }
 }
 
 interface GarageRouteChildren {
-  GarageCardIdRoute: typeof GarageCardIdRoute
+  GarageCarIdRoute: typeof GarageCarIdRoute
+  GarageIndexRoute: typeof GarageIndexRoute
 }
 
 const GarageRouteChildren: GarageRouteChildren = {
-  GarageCardIdRoute: GarageCardIdRoute,
+  GarageCarIdRoute: GarageCarIdRoute,
+  GarageIndexRoute: GarageIndexRoute,
 }
 
 const GarageRouteWithChildren =
@@ -230,9 +309,12 @@ const rootRouteChildren: RootRouteChildren = {
   ChatRoute: ChatRoute,
   DashboardRoute: DashboardRoute,
   GarageRoute: GarageRouteWithChildren,
+  KnowledgeRoute: KnowledgeRoute,
   ProfileRoute: ProfileRoute,
+  SessionsRoute: SessionsRoute,
   SettingsRoute: SettingsRoute,
-  TelemteryRoute: TelemteryRoute,
+  TelemetryRoute: TelemetryRoute,
+  TracksRoute: TracksRoute,
   VoiceRoute: VoiceRoute,
 }
 export const routeTree = rootRouteImport

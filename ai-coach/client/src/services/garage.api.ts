@@ -228,3 +228,35 @@ export async function deleteProblem(problemId: string) {
 
   return response.json();
 }
+
+export type SvmImportResult = {
+  fileName: string;
+  keyValues: Record<string, string>;
+  suggestions: Partial<{
+    brakeBias: number;
+    frontRideHeight: number;
+    rearRideHeight: number;
+    frontCamber: number;
+    rearCamber: number;
+    frontToe: number;
+    rearToe: number;
+    frontARB: number;
+    rearARB: number;
+    frontSpring: number;
+    rearSpring: number;
+    diffPreload: number;
+  }>;
+};
+
+export async function importSetupFile(carId: string, file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("carId", carId);
+
+  const response = await fetch(`${API_URL}/api/setups/import`, {
+    method: "POST",
+    body: formData,
+  });
+
+  return response.json() as Promise<SvmImportResult>;
+}

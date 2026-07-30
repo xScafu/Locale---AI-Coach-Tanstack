@@ -8,7 +8,38 @@ import {
   updateSetup,
 } from "../repositories/setup.repository";
 
+import { parseSvmFile } from "../services/setup-import.service";
+
 const setups = new Hono();
+
+// Restituisce solo un'anteprima parsata: non salva nulla finché
+// l'utente non conferma dalla UI (i valori sono "suggerimenti", non
+// certezze - vedi commento in setup-import.service.ts).
+setups.post("/import", async (c) => {
+  const body = await c.req.parseBody();
+  const file = body.file;
+  const carId = typeof body.carId === "string" ? body.carId : "";
+
+  if (!file || typeof file === "string") {
+    return c.json(
+      { error: "file is required (multipart form field 'file')" },
+      400
+    );
+  }
+
+  if (!carId) {
+    return c.json({ error: "carId is required" }, 400);
+  }
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const parsed = parseSvmFile(buffer);
+
+  return c.json({
+    fileName: file.name,
+    keyValues: parsed.keyValues,
+    suggestions: parsed.suggestions,
+  });
+});
 
 setups.get("/", async (c) => {
   const carId = c.req.query("carId");

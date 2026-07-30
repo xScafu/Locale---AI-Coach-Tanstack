@@ -1,0 +1,59 @@
+"channelName","frequency","unit"
+Ambient Temperature,1,C
+Brake Pos,50,%
+Brake Pos Unfiltered,50,%
+Brake Thickness,10,%
+Brakes Air Temp,50,C
+Brakes Force,50,%
+Brakes Temp,50,C
+Clutch Pos,50,%
+Clutch Pos Unfiltered,50,%
+Clutch RPM,100,RPM
+Engine Oil Temp,7,C
+Engine RPM,100,RPM
+Engine Water Temp,7,C
+FFB Output,100,%
+Front3rdDeflection,100,m
+FrontRideHeight,100,m
+Fuel Level,20,L
+G Force Lat,10,G
+G Force Long,10,G
+G Force Vert,10,G
+GPS Latitude,10,deg
+GPS Longitude,10,deg
+GPS Speed,10,m/s
+GPS Time,100,s
+Ground Speed,100,km/h
+Lap Dist,10,m
+OverheatingState,2,""
+Path Lateral,10,m
+Rear3rdDeflection,100,m
+RearRideHeight,100,m
+Regen Rate,100,kW
+RideHeights,100,m
+SoC,20,%
+Steering Pos,100,%
+Steering Pos Unfiltered,100,%
+Steering Shaft Torque,100,Nm
+SurfaceTypes,5,""
+Susp Pos,100,m
+TC,100,""
+Throttle Pos,50,%
+Throttle Pos Unfiltered,50,%
+Time Behind Next,2,s
+Total Dist,10,m
+Track Edge,10,m
+Track Temperature,1,C
+Turbo Boost Pressure,100,Pa
+Tyres Wear,10,%
+TyresCarcassTemp,5,C
+TyresPressure,10,kPa
+TyresRimTemp,50,C
+TyresRubberTemp,10,C
+TyresTempCentre,100,C
+TyresTempLeft,100,C
+TyresTempRight,100,C
+Virtual Energy,20,%
+Wheel Speed,100,m/s
+Wind Heading,1,deg
+Wind Speed,1,m/s

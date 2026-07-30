@@ -8,6 +8,27 @@
       "when": 1785106431513,
       "tag": "0000_handy_proemial_gods",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1785190058989,
+      "tag": "0001_melted_jocasta",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1785191746213,
+      "tag": "0002_funny_harpoon",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1785408139003,
+      "tag": "0003_pale_thaddeus_ross",
+      "breakpoints": true
     }
   ]
 }

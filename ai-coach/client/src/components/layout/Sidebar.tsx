@@ -34,6 +34,16 @@ const menu: NavigationItem[] = [
     icon: "📂",
   },
   {
+    title: "Telemetria",
+    to: "/telemetry",
+    icon: "📈",
+  },
+  {
+    title: "Knowledge Base",
+    to: "/knowledge",
+    icon: "📚",
+  },
+  {
     title: "Settings",
     to: "/settings",
     icon: "⚙",

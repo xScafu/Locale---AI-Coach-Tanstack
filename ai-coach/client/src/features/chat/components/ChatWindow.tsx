@@ -8,11 +8,11 @@ export default function ChatWindow() {
   return (
     <div
       className="
-flex-1
-overflow-y-auto
-space-y-4
-p-6
-"
+        flex-1
+        overflow-y-auto
+        space-y-4
+        p-6
+        "
     >
       {messages.map((message) => (
         <MessageBubble key={message.id} message={message} />

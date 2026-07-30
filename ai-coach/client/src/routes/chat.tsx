@@ -9,7 +9,7 @@ export const Route = createFileRoute("/chat")({
 
 function ChatPage() {
   return (
-    <div className="h-screen flex flex-col">
+    <div className="h-[100%] flex flex-col">
       <ChatWindow />
 
       <ChatInput />

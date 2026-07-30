@@ -1,6 +1,12 @@
 import { eq } from "drizzle-orm";
 import { db } from "../db";
-import { cars } from "../db/schema";
+import {
+  cars,
+  setups,
+  carProblems,
+  coachContexts,
+  telemetryImports,
+} from "../db/schema";
 
 export type CarInsert = {
   id: string;
@@ -32,7 +38,29 @@ export async function updateCar(id: string, data: CarUpdate) {
   await db.update(cars).set(data).where(eq(cars.id, id));
 }
 
+// ... (createCar, getCarsByPilot, getCarById, updateCar, getActiveCar,
+//      deactivateCars, activateCar restano invariati) ...
+
 export async function deleteCar(id: string) {
+  // Prima cancellava solo la riga in "cars": se esisteva anche un solo
+  // setup, problema, coach_context o telemetry_import collegato a
+  // quest'auto, SQLite bloccava tutto con FOREIGN KEY constraint
+  // failed. Ora puliamo prima le dipendenze.
+  await db.delete(setups).where(eq(setups.carId, id));
+  await db.delete(carProblems).where(eq(carProblems.carId, id));
+
+  // Questi due non "appartengono" all'auto in senso stretto (sono
+  // riferimenti opzionali), quindi li scolleghiamo invece di cancellarli.
+  await db
+    .update(coachContexts)
+    .set({ carId: null })
+    .where(eq(coachContexts.carId, id));
+
+  await db
+    .update(telemetryImports)
+    .set({ carId: null })
+    .where(eq(telemetryImports.carId, id));
+
   await db.delete(cars).where(eq(cars.id, id));
 }
 

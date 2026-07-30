@@ -112,6 +112,10 @@ export const tracks = sqliteTable("tracks", {
 
   country: text("country"),
 
+  // JSON stringificato: array di {lat, lon} presi da un giro pulito,
+  // usato come sagoma fissa di sfondo nella pagina Telemetria.
+  layout: text("layout"),
+
   isActive: integer("is_active", {
     mode: "boolean",
   })
@@ -195,6 +199,53 @@ export const coachContexts = sqliteTable("coach_context", {
   trackId: text("track_id").references(() => tracks.id),
 
   summary: text("summary"),
+
+  createdAt: integer("created_at")
+    .$defaultFn(() => Math.floor(Date.now() / 1000))
+    .notNull(),
+});
+
+// Knowledge Base: voci curate (setup, tecniche di guida,
+// problema->soluzione, note generali) che il coach consulta in base
+// al messaggio dell'utente per dare risposte più informate e coerenti.
+export const knowledgeBase = sqliteTable("knowledge_base", {
+  id: text("id").primaryKey(),
+
+  // "setup" | "tecnica" | "problema" | "generale" (libero, non enum
+  // vincolante a livello DB per restare flessibili)
+  category: text("category").notNull(),
+
+  title: text("title").notNull(),
+
+  content: text("content").notNull(),
+
+  // parole chiave separate da virgola, usate per la ricerca
+  tags: text("tags"),
+
+  createdAt: integer("created_at")
+    .$defaultFn(() => Math.floor(Date.now() / 1000))
+    .notNull(),
+});
+
+// Import Telemetria: riferimento al file .duckdb caricato +
+// struttura introspezionata (tabelle/colonne/righe) in JSON. Non
+// salviamo i dati grezzi in SQLite: il file .duckdb resta la fonte di
+// verità e viene interrogato al bisogno.
+export const telemetryImports = sqliteTable("telemetry_imports", {
+  id: text("id").primaryKey(),
+
+  carId: text("car_id").references(() => cars.id),
+
+  fileName: text("file_name").notNull(),
+
+  filePath: text("file_path").notNull(),
+
+  // JSON stringificato: [{ name, columns: [{name, type}], rowCount }]
+  tables: text("tables"),
+
+  status: text("status").notNull(), // "pending" | "parsed" | "error"
+
+  errorMessage: text("error_message"),
 
   createdAt: integer("created_at")
     .$defaultFn(() => Math.floor(Date.now() / 1000))
