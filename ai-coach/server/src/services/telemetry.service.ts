@@ -531,3 +531,229 @@ export async function getTelemetrySummary(
     closeConn(conn);
   }
 }
+
+// ---------------------------------------------------------------------
+// Profilo del tracciato
+// ---------------------------------------------------------------------
+
+export type TrackCorner = {
+  number: number;
+  direction: "dx" | "sx";
+  entryM: number;
+  apexM: number;
+  exitM: number;
+  lengthM: number;
+  minSpeedKmh: number;
+  peakLatG: number;
+  // Dove inizia la frenata che prepara questa curva, e quanti metri
+  // prima dell'ingresso. null se ci si arriva senza frenare.
+  brakingPointM: number | null;
+  brakingDistanceM: number | null;
+  rpmAtApex: number | null;
+};
+
+export type TrackProfile = {
+  lengthM: number;
+  bestLapSeconds: number;
+  lapsAnalyzed: number;
+  corners: TrackCorner[];
+  detection: typeof DETECTION;
+};
+
+// Parametri di rilevamento, tarati sul giro migliore di un file reale
+// (Hypercar a Monza: 10 curve, lunghezza 5775 m contro i 5793 ufficiali).
+//
+// LAT_G_THRESHOLD definisce cosa conta come "curva": non la geometria
+// del tracciato ma il carico che impone al pilota. Un curvone veloce
+// preso in pieno resta fuori di proposito — a Monza la Curva Grande fa
+// segnare 0.5G a 250 km/h e non richiede ne' frenata ne' correzione di
+// traiettoria. La soglia dipende quindi anche dall'auto: la stessa
+// curva con una GT3 piu' lenta puo' rientrare.
+const DETECTION = {
+  latGThreshold: 0.6,
+  minLengthM: 25,
+  mergeGapM: 60,
+  minPeakG: 0.9,
+};
+
+// Riporta un canale sulla griglia temporale di "Lap Dist" (10Hz): i
+// canali hanno frequenze diverse (fino a 100Hz) e senza riallineamento
+// gli indici non sono confrontabili tra loro.
+function alignToLapGrid(
+  values: number[],
+  channelFreq: number,
+  gridFreq: number,
+  startIdx: number,
+  endIdx: number
+): number[] {
+  const out: number[] = [];
+
+  for (let i = startIdx; i <= endIdx; i++) {
+    const t = i / gridFreq;
+    const idx = Math.min(Math.round(t * channelFreq), values.length - 1);
+    out.push(values[idx]);
+  }
+
+  return out;
+}
+
+export async function computeTrackProfile(
+  filePath: string
+): Promise<TrackProfile | null> {
+  const database = await openDb(filePath);
+  const conn = database.connect();
+
+  try {
+    const channelRows = await all<{ channelName: string; frequency: number }>(
+      conn,
+      `SELECT "channelName", "frequency" FROM "channelsList"`
+    );
+
+    const freqOf = (name: string) =>
+      channelRows.find((c) => c.channelName === name)?.frequency ?? null;
+
+    const channels: ChannelMeta[] = channelRows.map((c) => ({
+      name: c.channelName,
+      frequency: c.frequency,
+      unit: "",
+    }));
+
+    const gridFreq = freqOf("GPS Latitude") ?? 10;
+    const segments = await computeLapSegments(conn, channels);
+
+    const valid = segments.filter(
+      (s) => (s.endIdx - s.startIdx + 1) / gridFreq >= 20
+    );
+
+    if (valid.length === 0) return null;
+
+    const best = valid.reduce((b, c) =>
+      c.endIdx - c.startIdx < b.endIdx - b.startIdx ? c : b
+    );
+
+    const lapDistAll = await fetchWholeChannel(conn, "Lap Dist");
+    const dist = lapDistAll.slice(best.startIdx, best.endIdx + 1);
+
+    if (dist.length === 0) return null;
+
+    async function aligned(name: string): Promise<number[] | null> {
+      const freq = freqOf(name);
+      if (!freq) return null;
+
+      const values = await fetchWholeChannel(conn, name);
+      return alignToLapGrid(
+        values,
+        freq,
+        gridFreq,
+        best.startIdx,
+        best.endIdx
+      );
+    }
+
+    const latG = await aligned("G Force Lat");
+    const speed = await aligned("Ground Speed");
+
+    // Senza G laterale e velocita' non c'e' modo di segmentare il giro.
+    if (!latG || !speed) return null;
+
+    const brake = await aligned("Brake Pos");
+    const rpm = await aligned("Engine RPM");
+
+    // 1. Tratti in cui il carico laterale supera la soglia.
+    const raw: [number, number][] = [];
+    let open: number | null = null;
+
+    for (let i = 0; i < latG.length; i++) {
+      const cornering = Math.abs(latG[i]) > DETECTION.latGThreshold;
+
+      if (cornering && open === null) open = i;
+      if (!cornering && open !== null) {
+        raw.push([open, i - 1]);
+        open = null;
+      }
+    }
+
+    if (open !== null) raw.push([open, latG.length - 1]);
+
+    const directionOf = ([a, b]: [number, number]) =>
+      latG.slice(a, b + 1).reduce((x, y) => x + y, 0) > 0 ? 1 : -1;
+
+    // 2. Unisce solo i tratti dello STESSO verso: due tratti di verso
+    // opposto sono curve distinte (una chicane), mentre lo stesso verso
+    // spezzato in due e' quasi sempre una curva sola il cui carico e'
+    // sceso sotto soglia a meta'. Senza questa distinzione le curve
+    // lunghe venivano contate due volte.
+    const merged: [number, number][] = [];
+
+    for (const seg of raw) {
+      const last = merged[merged.length - 1];
+      const gap = last ? dist[seg[0]] - dist[last[1]] : Infinity;
+
+      if (last && gap < DETECTION.mergeGapM && directionOf(last) === directionOf(seg)) {
+        last[1] = seg[1];
+      } else {
+        merged.push([...seg] as [number, number]);
+      }
+    }
+
+    // 3. Scarta i tratti troppo corti o troppo blandi: sono correzioni
+    // di traiettoria in rettilineo, non curve.
+    const kept = merged.filter(([a, b]) => {
+      const peak = Math.max(...latG.slice(a, b + 1).map(Math.abs));
+      return (
+        dist[b] - dist[a] >= DETECTION.minLengthM && peak >= DETECTION.minPeakG
+      );
+    });
+
+    const corners: TrackCorner[] = kept.map(([a, b], n) => {
+      let apex = a;
+      for (let i = a; i <= b; i++) if (speed[i] < speed[apex]) apex = i;
+
+      // La staccata si cerca risalendo dall'ingresso, senza mai oltre-
+      // passare l'uscita della curva precedente: altrimenti a una curva
+      // veniva attribuita la frenata di quella prima.
+      const floor = n > 0 ? kept[n - 1][1] : 0;
+      let brakingIdx: number | null = null;
+
+      if (brake) {
+        let i = a;
+        while (i > floor && brake[i] <= 5) i--;
+
+        if (brake[i] > 5) {
+          while (i > floor && brake[i] > 5) i--;
+          brakingIdx = i;
+        }
+      }
+
+      const signed = latG.slice(a, b + 1).reduce((x, y) => x + y, 0);
+
+      return {
+        number: n + 1,
+        direction: signed > 0 ? "dx" : "sx",
+        entryM: Math.round(dist[a]),
+        apexM: Math.round(dist[apex]),
+        exitM: Math.round(dist[b]),
+        lengthM: Math.round(dist[b] - dist[a]),
+        minSpeedKmh: Math.round(speed[apex] * 10) / 10,
+        peakLatG:
+          Math.round(Math.max(...latG.slice(a, b + 1).map(Math.abs)) * 100) /
+          100,
+        brakingPointM: brakingIdx !== null ? Math.round(dist[brakingIdx]) : null,
+        brakingDistanceM:
+          brakingIdx !== null ? Math.round(dist[a] - dist[brakingIdx]) : null,
+        rpmAtApex: rpm ? Math.round(rpm[apex]) : null,
+      };
+    });
+
+    return {
+      lengthM: Math.round(Math.max(...dist)),
+      bestLapSeconds:
+        Math.round(((best.endIdx - best.startIdx + 1) / gridFreq) * 1000) / 1000,
+      lapsAnalyzed: valid.length,
+      corners,
+      detection: DETECTION,
+    };
+  } finally {
+    closeConn(conn);
+  }
+}

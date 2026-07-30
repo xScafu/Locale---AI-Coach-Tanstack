@@ -1,3 +1,68 @@
+// Trasforma il profilo derivato dalla telemetria in poche righe dense.
+// Le curve non hanno nome perche' sono rilevate dai dati, non da una
+// mappa: il riferimento condiviso col pilota e' la distanza dal
+// traguardo, che compare anche sul grafico della pagina Telemetria.
+function buildTrackSection(track: any) {
+  if (!track) return "Nessun circuito attivo.";
+
+  const lines: string[] = [];
+
+  lines.push(`Nome: ${track.name}`);
+  if (track.country) lines.push(`Paese: ${track.country}`);
+  if (track.variant && track.variant !== track.name) {
+    lines.push(`Variante: ${track.variant}`);
+  }
+  if (track.lengthM) lines.push(`Lunghezza: ${Math.round(track.lengthM)} m`);
+  if (track.cornerCount) lines.push(`Curve rilevate: ${track.cornerCount}`);
+  if (track.referenceLapSeconds) {
+    lines.push(`Tempo di riferimento del pilota: ${track.referenceLapSeconds}s`);
+  }
+  if (track.notes) lines.push(`Note del pilota: ${track.notes}`);
+
+  let profile: any = null;
+
+  try {
+    profile = track.profile ? JSON.parse(track.profile) : null;
+  } catch {
+    profile = null;
+  }
+
+  if (!profile?.corners?.length) {
+    lines.push(
+      "Profilo curve: non disponibile (nessuna telemetria importata per questo circuito)."
+    );
+
+    return lines.join("\n");
+  }
+
+  lines.push(`Giro migliore analizzato: ${profile.bestLapSeconds}s`);
+  lines.push("");
+  lines.push(
+    "Profilo curve dal giro migliore del pilota (distanze in metri dal traguardo):"
+  );
+
+  for (const c of profile.corners) {
+    const braking =
+      c.brakingDistanceM !== null && c.brakingDistanceM !== undefined
+        ? `stacca ${c.brakingDistanceM}m prima`
+        : "senza frenata";
+
+    lines.push(
+      `- Curva ${c.number} (${c.direction}) a ${c.entryM}m: minima ${c.minSpeedKmh} km/h, ` +
+        `${c.peakLatG}G laterali, ${braking}, apice a ${c.apexM}m`
+    );
+  }
+
+  lines.push("");
+  lines.push(
+    `Sono elencate solo le curve che superano ${profile.detection.latGThreshold}G: ` +
+      "i curvoni percorsi in pieno non compaiono, perche' non richiedono " +
+      "frenata ne' correzione di traiettoria con questa auto."
+  );
+
+  return lines.join("\n");
+}
+
 export function buildCoachContext(context: any) {
   const { pilot, car, track, settings, coachMemory, knowledge, telemetry } =
     context;
@@ -55,9 +120,7 @@ ${car?.notes ?? "-"}
 
 ===== CIRCUITO =====
 
-${track?.name ?? "-"}
-
-${track?.country ?? "-"}
+${buildTrackSection(track)}
 
 ===== TELEMETRIA =====
 
@@ -81,6 +144,10 @@ Istruzioni:
 - Se sono disponibili dati di telemetria, usali come riferimento
   concreto (es. confronta i consigli con la velocità massima o l'uso
   di freno/acceleratore osservati) invece di parlare in astratto.
+- Il profilo curve viene dai dati reali di questo pilota su questo
+  simulatore: quando parli di una curva, citala con la sua distanza dal
+  traguardo e i suoi numeri, non con nomi presi dalla tua conoscenza
+  del circuito reale, che nel simulatore possono non corrispondere.
 - Quando possibile proponi prove in pista.
 `;
 }

@@ -7,9 +7,17 @@ export type TrackInsert = {
   pilotId: string;
   name: string;
   country?: string | null;
+  variant?: string | null;
 };
 
-export type TrackUpdate = Partial<Omit<TrackInsert, "id" | "pilotId">>;
+export type TrackUpdate = Partial<
+  Omit<TrackInsert, "id" | "pilotId"> & {
+    lengthM: number | null;
+    cornerCount: number | null;
+    referenceLapSeconds: number | null;
+    notes: string | null;
+  }
+>;
 
 export async function createTrack(data: TrackInsert) {
   await db.insert(tracks).values(data);
@@ -34,6 +42,29 @@ export async function updateTrack(id: string, data: TrackUpdate) {
 // sovrapporre la telemetria dei giri successivi.
 export async function updateTrackLayout(id: string, layout: string | null) {
   await db.update(tracks).set({ layout }).where(eq(tracks.id, id));
+}
+
+export async function saveTrackProfile(
+  id: string,
+  profile: string,
+  importId: string,
+  derived: { lengthM: number; cornerCount: number }
+) {
+  const existing = await getTrackById(id);
+
+  await db
+    .update(tracks)
+    .set({
+      profile,
+      profileImportId: importId,
+      profileUpdatedAt: Math.floor(Date.now() / 1000),
+
+      // I campi della scheda si precompilano solo se vuoti: un valore
+      // scritto dal pilota non va sovrascritto da un nuovo import.
+      lengthM: existing?.lengthM ?? derived.lengthM,
+      cornerCount: existing?.cornerCount ?? derived.cornerCount,
+    })
+    .where(eq(tracks.id, id));
 }
 
 export async function getActiveTrack() {

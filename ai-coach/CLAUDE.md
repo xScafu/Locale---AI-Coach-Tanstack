@@ -121,6 +121,40 @@ toccarla. I canali hanno frequenze diverse e vengono riallineati per indice tram
 
 L'upload passa da un `bodyLimit` dedicato di 200 MB in `index.ts`.
 
+### Profilo del tracciato
+
+Un circuito **non** è una scheda compilata a mano: le curve sono ricavate dalla
+telemetria del pilota. `computeTrackProfile` (in `telemetry.service.ts`) prende il giro
+più veloce del file e lo segmenta in curve.
+
+Come funziona il rilevamento, in ordine:
+
+1. Tratti in cui `|G Force Lat|` supera `0.6`.
+2. Unione dei soli tratti **dello stesso verso** entro 60 m — due tratti di verso opposto
+   sono curve distinte (una chicane), lo stesso verso spezzato in due è una curva sola il
+   cui carico è calato a metà. Senza questa distinzione le curve lunghe si contano doppie.
+3. Scarto dei tratti sotto 25 m o sotto 0.9G di picco: sono correzioni in rettilineo.
+4. Per ogni curva, la staccata si cerca risalendo dall'ingresso **senza mai superare
+   l'uscita della curva precedente**, altrimenti si attribuisce a una curva la frenata di
+   quella prima.
+
+La soglia definisce cosa è una curva *per il pilota*, non per la geometria della pista:
+un curvone preso in pieno resta fuori di proposito. A Monza la Curva Grande segna 0.5G a
+250 km/h e infatti non compare. Dipende quindi anche dall'auto.
+
+Tarato su un file reale: Hypercar a Monza, 10 curve, 5775 m contro i 5793 ufficiali.
+
+**Collegamento import → circuito.** `telemetry_imports.track_id` viene popolato
+automaticamente da `track-profile.service.ts` leggendo `TrackName` dai metadata. Il
+confronto dei nomi è volutamente tollerante (uno contenuto nell'altro, normalizzato):
+il simulatore scrive "Autodromo Nazionale Monza" mentre il pilota chiama il circuito
+"Monza", e un confronto esatto creerebbe un doppione a ogni import.
+
+**Campi manuali vs derivati.** `lengthM` e `cornerCount` in `tracks` sono precompilati
+dal profilo, ma `saveTrackProfile` li sovrascrive **solo se vuoti**: un valore corretto a
+mano dal pilota sopravvive ai nuovi import. Il profilo grezzo sta in `tracks.profile`
+come JSON e viene rigenerato per intero ogni volta.
+
 ### Client (`client/src`) — TanStack Router (file-based)
 
 - Le rotte sono **file-based**: `routes/*.tsx` genera `routeTree.gen.ts` tramite il

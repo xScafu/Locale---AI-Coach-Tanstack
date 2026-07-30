@@ -10,6 +10,8 @@ import {
   updateTrackLayout,
 } from "../repositories/track.repository";
 
+import { regenerateTrackProfile } from "../services/track-profile.service";
+
 const tracks = new Hono();
 
 tracks.get("/", async (c) => {
@@ -62,12 +64,52 @@ tracks.put("/:id", async (c) => {
     return c.json({ error: "Track not found" }, 404);
   }
 
+  // I campi numerici della scheda sono opzionali: stringa vuota o
+  // valore non numerico vanno letti come "non compilato", non come 0.
+  const num = (value: unknown) => {
+    if (value === null || value === undefined || value === "") return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
   await updateTrack(id, {
     name: body.name,
     country: body.country ?? null,
+    variant: body.variant ?? null,
+    lengthM: num(body.lengthM),
+    cornerCount: num(body.cornerCount),
+    referenceLapSeconds: num(body.referenceLapSeconds),
+    notes: body.notes ?? null,
   });
 
   return c.json({ ok: true });
+});
+
+// Rigenera il profilo del tracciato dall'import di telemetria piu'
+// recente collegato a questo circuito. Serve per i circuiti creati
+// prima che il collegamento automatico esistesse, e per rigenerare il
+// profilo dopo aver caricato un giro migliore.
+tracks.post("/:id/profile", async (c) => {
+  const id = c.req.param("id");
+
+  const existing = await getTrackById(id);
+  if (!existing) {
+    return c.json({ error: "Track not found" }, 404);
+  }
+
+  const result = await regenerateTrackProfile(id);
+
+  if (!result) {
+    return c.json(
+      {
+        error:
+          "Nessun import di telemetria utilizzabile per questo circuito. Carica un file .duckdb dalla pagina Telemetria.",
+      },
+      400
+    );
+  }
+
+  return c.json({ profile: result });
 });
 
 tracks.put("/:id/layout", async (c) => {

@@ -116,6 +116,33 @@ export const tracks = sqliteTable("tracks", {
   // usato come sagoma fissa di sfondo nella pagina Telemetria.
   layout: text("layout"),
 
+  // Variante del tracciato dichiarata dal simulatore (TrackLayout nei
+  // metadata del file .duckdb): stesso circuito, layout diversi.
+  variant: text("variant"),
+
+  // ---- Scheda compilabile a mano ----
+  // Precompilata dal profilo derivato quando disponibile, ma modificabile:
+  // il valore scritto dal pilota vince sempre su quello calcolato.
+  lengthM: real("length_m"),
+
+  cornerCount: integer("corner_count"),
+
+  // Tempo di riferimento personale in secondi, per dare al coach un
+  // metro di paragone su cui misurare i giri nuovi.
+  referenceLapSeconds: real("reference_lap_seconds"),
+
+  notes: text("notes"),
+
+  // ---- Profilo derivato dalla telemetria ----
+  // JSON stringificato: { lengthM, bestLapSeconds, corners: [...] }.
+  // Rigenerato a ogni import di quel circuito, vedi
+  // services/track-profile.service.ts.
+  profile: text("profile"),
+
+  profileImportId: text("profile_import_id"),
+
+  profileUpdatedAt: integer("profile_updated_at"),
+
   isActive: integer("is_active", {
     mode: "boolean",
   })
@@ -235,6 +262,11 @@ export const telemetryImports = sqliteTable("telemetry_imports", {
   id: text("id").primaryKey(),
 
   carId: text("car_id").references(() => cars.id),
+
+  // Collegato automaticamente all'import leggendo "TrackName" dai
+  // metadata del file: senza questo i dati non si aggregano per
+  // circuito e il profilo del tracciato non si puo' costruire.
+  trackId: text("track_id").references(() => tracks.id),
 
   fileName: text("file_name").notNull(),
 

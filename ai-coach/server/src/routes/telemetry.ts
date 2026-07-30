@@ -19,6 +19,8 @@ import {
   runReadOnlyQuery,
 } from "../services/telemetry.service";
 
+import { linkImportToTrack } from "../services/track-profile.service";
+
 const telemetry = new Hono();
 const STORAGE_DIR = path.resolve("./data/telemetry");
 
@@ -82,7 +84,20 @@ telemetry.post("/import", async (c) => {
       status: "parsed",
     });
 
-    return c.json({ id, status: "parsed", tables });
+    // Collega l'import al circuito dichiarato nel file e rigenera il
+    // profilo del tracciato. Non puo' far fallire l'import: se non
+    // riesce, restituisce semplicemente trackId null.
+    const link = await linkImportToTrack(id, filePath, carId);
+
+    return c.json({
+      id,
+      status: "parsed",
+      tables,
+      trackId: link.trackId,
+      trackName: link.trackName,
+      trackCreated: link.created,
+      cornersDetected: link.profile?.corners.length ?? null,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Errore sconosciuto";
 

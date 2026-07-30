@@ -1,13 +1,58 @@
 const API_URL = "http://localhost:3001";
 
+export type TrackCorner = {
+  number: number;
+  direction: "dx" | "sx";
+  entryM: number;
+  apexM: number;
+  exitM: number;
+  lengthM: number;
+  minSpeedKmh: number;
+  peakLatG: number;
+  brakingPointM: number | null;
+  brakingDistanceM: number | null;
+  rpmAtApex: number | null;
+};
+
+export type TrackProfile = {
+  lengthM: number;
+  bestLapSeconds: number;
+  lapsAnalyzed: number;
+  corners: TrackCorner[];
+  detection: {
+    latGThreshold: number;
+    minLengthM: number;
+    mergeGapM: number;
+    minPeakG: number;
+  };
+};
+
 export type Track = {
   id: string;
   pilotId: string;
   name: string;
   country: string | null;
+  variant: string | null;
+  lengthM: number | null;
+  cornerCount: number | null;
+  referenceLapSeconds: number | null;
+  notes: string | null;
+  // JSON stringificato di TrackProfile, generato dalla telemetria.
+  profile: string | null;
+  profileUpdatedAt: number | null;
   isActive?: boolean;
   layout?: string | null;
 };
+
+export function parseTrackProfile(track: Track): TrackProfile | null {
+  if (!track.profile) return null;
+
+  try {
+    return JSON.parse(track.profile) as TrackProfile;
+  } catch {
+    return null;
+  }
+}
 
 export async function getTracks(pilotId: string) {
   const response = await fetch(`${API_URL}/api/tracks?pilotId=${pilotId}`);
@@ -35,7 +80,15 @@ export async function createTrack(data: {
 
 export async function updateTrack(
   id: string,
-  data: { name: string; country?: string }
+  data: {
+    name: string;
+    country?: string | null;
+    variant?: string | null;
+    lengthM?: number | string | null;
+    cornerCount?: number | string | null;
+    referenceLapSeconds?: number | string | null;
+    notes?: string | null;
+  }
 ) {
   const response = await fetch(`${API_URL}/api/tracks/${id}`, {
     method: "PUT",
@@ -44,6 +97,25 @@ export async function updateTrack(
   });
 
   return response.json();
+}
+
+// Ricalcola il profilo curve dall'import di telemetria piu' recente
+// collegato al circuito.
+export async function regenerateTrackProfile(id: string) {
+  const response = await fetch(`${API_URL}/api/tracks/${id}/profile`, {
+    method: "POST",
+  });
+
+  const body = (await response.json()) as {
+    profile?: TrackProfile;
+    error?: string;
+  };
+
+  if (!response.ok) {
+    throw new Error(body.error ?? "Impossibile generare il profilo");
+  }
+
+  return body;
 }
 
 export async function saveTrackLayout(

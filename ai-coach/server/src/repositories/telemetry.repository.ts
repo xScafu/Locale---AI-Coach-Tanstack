@@ -5,6 +5,7 @@ import { telemetryImports } from "../db/schema.js";
 export type TelemetryImportInsert = {
   id: string;
   carId?: string | null;
+  trackId?: string | null;
   fileName: string;
   filePath: string;
   tables?: string | null;
