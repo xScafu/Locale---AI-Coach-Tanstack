@@ -1,8 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
-import { getSettings, updateSettings } from "../services/settings.ap";
+import { getSettings, updateSettings } from "@/services/settings.ap";
+import PageHeader from "@/components/layout/PageHeader";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export const Route = createFileRoute("/settings")({
   component: SettingsPage,
@@ -20,7 +26,6 @@ function SettingsPage() {
   const queryClient = useQueryClient();
   const [form, setForm] = useState(defaultForm);
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
 
   const settingsQuery = useQuery({
     queryKey: ["settings"],
@@ -43,104 +48,109 @@ function SettingsPage() {
 
   async function save() {
     setSaving(true);
-    setSaved(false);
 
     try {
       await updateSettings(form);
       await queryClient.invalidateQueries({ queryKey: ["settings"] });
-      setSaved(true);
+
+      // Prima era uno stato `saved` che, una volta acceso, non veniva
+      // mai rimesso a false: la scritta "Salvato" restava a schermo
+      // per sempre. Il toast sparisce da solo.
+      toast.success("Impostazioni salvate");
+    } catch {
+      toast.error("Salvataggio non riuscito");
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <div className="max-w-xl space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-bold">Impostazioni</h1>
-        <p className="text-sm text-gray-500">
-          Parametri del modello usato dal coach in chat.
-        </p>
-      </div>
+    <div className="max-w-2xl space-y-6">
+      <PageHeader
+        title="Impostazioni"
+        description="Parametri del modello usato dal coach in chat."
+      />
 
-      <div className="space-y-4 rounded-lg border p-4">
-        <div>
-          <label className="text-sm font-medium">Modello OpenAI</label>
-          <input
-            className="mt-1 w-full rounded border p-2"
-            value={form.openAiModel}
-            onChange={(e) => setForm({ ...form, openAiModel: e.target.value })}
-          />
-        </div>
+      <Card>
+        <CardContent className="space-y-5">
+          <div className="space-y-2">
+            <Label htmlFor="model">Modello OpenAI</Label>
+            <Input
+              id="model"
+              className="font-mono"
+              value={form.openAiModel}
+              onChange={(e) =>
+                setForm({ ...form, openAiModel: e.target.value })
+              }
+            />
+          </div>
 
-        <div>
-          <label className="text-sm font-medium">
-            Max output tokens (include il ragionamento interno sui modelli
-            reasoning: valori bassi possono causare risposte vuote)
-          </label>
-          <input
-            type="number"
-            className="mt-1 w-full rounded border p-2"
-            value={form.maxOutputTokens}
-            onChange={(e) =>
-              setForm({ ...form, maxOutputTokens: Number(e.target.value) })
-            }
-          />
-        </div>
+          <div className="space-y-2">
+            <Label htmlFor="max-output">Max output tokens</Label>
+            <Input
+              id="max-output"
+              type="number"
+              className="font-mono"
+              value={form.maxOutputTokens}
+              onChange={(e) =>
+                setForm({ ...form, maxOutputTokens: Number(e.target.value) })
+              }
+            />
+            <p className="text-muted-foreground text-xs">
+              Include il ragionamento interno sui modelli reasoning: valori
+              bassi possono causare risposte vuote.
+            </p>
+          </div>
 
-        <div>
-          <label className="text-sm font-medium">Max input tokens</label>
-          <input
-            type="number"
-            className="mt-1 w-full rounded border p-2"
-            value={form.maxInputTokens}
-            onChange={(e) =>
-              setForm({ ...form, maxInputTokens: Number(e.target.value) })
-            }
-          />
-        </div>
+          <div className="space-y-2">
+            <Label htmlFor="max-input">Max input tokens</Label>
+            <Input
+              id="max-input"
+              type="number"
+              className="font-mono"
+              value={form.maxInputTokens}
+              onChange={(e) =>
+                setForm({ ...form, maxInputTokens: Number(e.target.value) })
+              }
+            />
+          </div>
 
-        <div>
-          <label className="text-sm font-medium">Temperature</label>
-          <input
-            type="number"
-            step="0.1"
-            min="0"
-            max="2"
-            className="mt-1 w-full rounded border p-2"
-            value={form.temperature}
-            onChange={(e) =>
-              setForm({ ...form, temperature: Number(e.target.value) })
-            }
-          />
-        </div>
+          <div className="space-y-2">
+            <Label htmlFor="temperature">Temperature</Label>
+            <Input
+              id="temperature"
+              type="number"
+              step="0.1"
+              min="0"
+              max="2"
+              className="font-mono"
+              value={form.temperature}
+              onChange={(e) =>
+                setForm({ ...form, temperature: Number(e.target.value) })
+              }
+            />
+          </div>
 
-        <div>
-          <label className="text-sm font-medium">
-            Riassunto automatico memoria ogni N messaggi
-          </label>
-          <input
-            type="number"
-            className="mt-1 w-full rounded border p-2"
-            value={form.autoSummaryEvery}
-            onChange={(e) =>
-              setForm({ ...form, autoSummaryEvery: Number(e.target.value) })
-            }
-          />
-        </div>
+          <div className="space-y-2">
+            <Label htmlFor="auto-summary">
+              Riassunto automatico memoria ogni N messaggi
+            </Label>
+            <Input
+              id="auto-summary"
+              type="number"
+              className="font-mono"
+              value={form.autoSummaryEvery}
+              onChange={(e) =>
+                setForm({ ...form, autoSummaryEvery: Number(e.target.value) })
+              }
+            />
+          </div>
 
-        <div className="flex items-center gap-3">
-          <button
-            className="rounded border px-4 py-2 disabled:opacity-50"
-            onClick={save}
-            disabled={saving}
-          >
+          <Button onClick={save} disabled={saving}>
             {saving ? "Salvataggio..." : "Salva impostazioni"}
-          </button>
-
-          {saved && <span className="text-sm text-green-600">Salvato ✓</span>}
-        </div>
-      </div>
+          </Button>
+        </CardContent>
+      </Card>
     </div>
   );
 }

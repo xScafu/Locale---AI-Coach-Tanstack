@@ -1,15 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
+// La rotta "/" era un segnaposto con scritto "Dashboard iniziale", cioe'
+// un vicolo cieco: la vera dashboard e' su /dashboard.
 export const Route = createFileRoute("/")({
-  component: Home,
+  beforeLoad: () => {
+    throw redirect({ to: "/dashboard" });
+  },
 });
-
-function Home() {
-  return (
-    <div className="p-8">
-      <h1 className="text-3xl font-bold">AI Coach</h1>
-
-      <p>Dashboard iniziale</p>
-    </div>
-  );
-}

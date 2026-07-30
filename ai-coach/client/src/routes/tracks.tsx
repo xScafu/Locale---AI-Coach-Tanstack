@@ -1,14 +1,27 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { Trash2 } from "lucide-react";
 
 import {
   activateTrack,
   createTrack,
   deleteTrack,
   getTracks,
-} from "../services/track.api";
-import { usePilotStore } from "../stores/pilot.store";
+} from "@/services/track.api";
+import { usePilotStore } from "@/stores/pilot.store";
+import PageHeader from "@/components/layout/PageHeader";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export const Route = createFileRoute("/tracks")({
   component: TracksPage,
@@ -65,90 +78,108 @@ function TracksPage() {
   }
 
   return (
-    <div className="space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-bold">Circuiti</h1>
-        <p className="text-sm text-gray-500">
-          Il circuito attivo viene passato al coach come contesto in chat.
-        </p>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Circuiti"
+        description="Il circuito attivo viene passato al coach come contesto in chat."
+      />
 
       <div className="grid gap-4 md:grid-cols-2">
-        <div className="rounded-lg border p-4">
-          <h2 className="mb-4 text-lg font-semibold">Nuovo circuito</h2>
+        <Card className="h-fit">
+          <CardHeader>
+            <CardTitle>Nuovo circuito</CardTitle>
+          </CardHeader>
 
-          <div className="space-y-3">
-            <input
-              className="w-full rounded border p-2"
-              placeholder="Nome circuito"
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-            />
-            <input
-              className="w-full rounded border p-2"
-              placeholder="Paese"
-              value={form.country}
-              onChange={(e) => setForm({ ...form, country: e.target.value })}
-            />
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="track-name">Nome circuito</Label>
+              <Input
+                id="track-name"
+                placeholder="Es. Monza"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+              />
+            </div>
 
-            <button
-              className="rounded border px-4 py-2 disabled:opacity-50"
-              onClick={save}
-              disabled={!pilotId || saving}
-            >
+            <div className="space-y-2">
+              <Label htmlFor="track-country">Paese</Label>
+              <Input
+                id="track-country"
+                placeholder="Es. Italia"
+                value={form.country}
+                onChange={(e) => setForm({ ...form, country: e.target.value })}
+              />
+            </div>
+
+            <Button onClick={save} disabled={!pilotId || saving}>
               {saving ? "Salvataggio..." : "Salva circuito"}
-            </button>
-          </div>
-        </div>
+            </Button>
+          </CardContent>
+        </Card>
 
-        <div className="rounded-lg border p-4">
-          <h2 className="mb-4 text-lg font-semibold">Circuiti salvati</h2>
+        <Card>
+          <CardHeader>
+            <CardTitle>Circuiti salvati</CardTitle>
+          </CardHeader>
 
-          {!pilotId && (
-            <p className="text-sm text-gray-500">
-              Salva prima un profilo pilota.
-            </p>
-          )}
+          <CardContent className="space-y-3">
+            {!pilotId && (
+              <p className="text-muted-foreground text-sm">
+                Salva prima un profilo pilota.
+              </p>
+            )}
 
-          {pilotId && isPending && <p>Caricamento...</p>}
+            {pilotId && isPending && (
+              <>
+                <Skeleton className="h-24 rounded-lg" />
+                <Skeleton className="h-24 rounded-lg" />
+              </>
+            )}
 
-          <div className="space-y-3">
+            {pilotId && !isPending && data?.items?.length === 0 && (
+              <p className="text-muted-foreground text-sm">
+                Nessun circuito salvato.
+              </p>
+            )}
+
             {data?.items?.map((track) => (
-              <div key={track.id} className="rounded border p-3">
-                <div className="font-medium">
-                  {track.name}
-                  {track.isActive && (
-                    <span className="ml-2 rounded bg-green-100 px-2 py-0.5 text-xs text-green-700">
-                      Attivo
-                    </span>
-                  )}
+              <div key={track.id} className="rounded-lg border p-3">
+                <div className="flex items-center gap-2">
+                  <span className="truncate font-medium">{track.name}</span>
+                  {track.isActive && <Badge>Attivo</Badge>}
                 </div>
-                <div className="text-sm text-gray-500">
+
+                <div className="text-muted-foreground mt-0.5 text-sm">
                   {track.country ?? "Paese non specificato"}
                 </div>
 
-                <div className="mt-3 flex gap-3">
+                <div className="mt-3 flex flex-wrap gap-2">
                   {!track.isActive && (
-                    <button
-                      className="text-sm text-blue-600 underline disabled:opacity-50"
+                    <Button
+                      variant="outline"
+                      size="sm"
                       disabled={busyId === track.id}
                       onClick={() => handleActivate(track.id)}
                     >
                       Imposta come attivo
-                    </button>
+                    </Button>
                   )}
-                  <button
-                    className="text-sm text-red-600 underline disabled:opacity-50"
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive hover:text-destructive"
                     disabled={busyId === track.id}
                     onClick={() => handleDelete(track.id)}
                   >
+                    <Trash2 className="size-3.5" />
                     Elimina
-                  </button>
+                  </Button>
                 </div>
               </div>
             ))}
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

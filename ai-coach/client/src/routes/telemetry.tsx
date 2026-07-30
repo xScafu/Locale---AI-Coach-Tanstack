@@ -1,9 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import { Trash2, Upload } from "lucide-react";
 
-import { usePilotStore } from "../stores/pilot.store";
-import { getCars } from "../services/garage.api";
+import { usePilotStore } from "@/stores/pilot.store";
+import { getCars } from "@/services/garage.api";
 import {
   deleteTelemetryImport,
   getLapTelemetry,
@@ -13,14 +14,62 @@ import {
   uploadTelemetry,
   type TelemetryImport,
   type TelemetryPoint,
-} from "../services/telemetry.api";
-import { getTrack, getTracks, saveTrackLayout } from "../services/track.api";
+} from "@/services/telemetry.api";
+import { getTrack, getTracks, saveTrackLayout } from "@/services/track.api";
+import PageHeader from "@/components/layout/PageHeader";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
 
 export const Route = createFileRoute("/telemetry")({
   component: Telemetry,
 });
 
+// Radix Select non ammette SelectItem con value="": serve un valore
+// sentinella da tradurre in stringa vuota quando si legge lo stato.
+const NONE = "__none__";
+
+// I colori dei canali vengono dai token --chart-*, non da esadecimali
+// fissi: cosi' restano leggibili anche in tema scuro e lo stesso canale
+// ha lo stesso colore in tutti i grafici della pagina.
+const CHANNEL_COLOR = {
+  brake: "var(--chart-1)",
+  throttle: "var(--chart-2)",
+  speed: "var(--chart-3)",
+  cursor: "var(--chart-4)",
+} as const;
+
 type LatLon = { lat: number; lon: number };
+
+type QueryRow = Record<string, unknown>;
+
+// Struttura introspezionata del file .duckdb, serializzata in JSON
+// dentro telemetry_imports.tables lato server.
+type TableInfo = { name: string; rowCount: number };
 
 // Proietta insieme sagoma di riferimento + giro corrente sullo stesso
 // piano in metri: condividono origine e scala, quindi restano allineati
@@ -87,7 +136,9 @@ function TrackMap({
 
   if (lapPoints.length === 0) {
     return (
-      <p className="text-sm text-gray-500">Nessun dato GPS per questo giro.</p>
+      <p className="text-muted-foreground text-sm">
+        Nessun dato GPS per questo giro.
+      </p>
     );
   }
 
@@ -106,9 +157,9 @@ function TrackMap({
   // Verde = acceleratore, rosso = freno, grigio = rilascio - stessa
   // logica del software di riferimento mostrato dall'utente.
   function segmentColor(p: TelemetryPoint) {
-    if ((p.brakePct ?? 0) > 5) return "#dc2626";
-    if ((p.throttlePct ?? 0) > 20) return "#16a34a";
-    return "#64748b";
+    if ((p.brakePct ?? 0) > 5) return CHANNEL_COLOR.brake;
+    if ((p.throttlePct ?? 0) > 20) return CHANNEL_COLOR.throttle;
+    return "var(--muted-foreground)";
   }
 
   const startProjected = project(lapPoints[0]);
@@ -120,12 +171,16 @@ function TrackMap({
       : null;
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full rounded border bg-white">
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      className="bg-muted/30 w-full rounded-lg border"
+    >
       {referencePoints.length > 0 && (
         <polyline
           points={referencePath}
           fill="none"
-          stroke="#cbd5e1"
+          stroke="var(--muted-foreground)"
+          strokeOpacity={0.35}
           strokeWidth={8}
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -153,8 +208,8 @@ function TrackMap({
         cx={startProjected[0]}
         cy={startProjected[1]}
         r={5}
-        fill="#0f172a"
-        stroke="white"
+        fill="var(--foreground)"
+        stroke="var(--background)"
         strokeWidth={2}
       />
 
@@ -163,8 +218,8 @@ function TrackMap({
           cx={cursorProjected[0]}
           cy={cursorProjected[1]}
           r={6}
-          fill="#facc15"
-          stroke="#0f172a"
+          fill={CHANNEL_COLOR.cursor}
+          stroke="var(--background)"
           strokeWidth={2}
         />
       )}
@@ -173,11 +228,13 @@ function TrackMap({
 }
 
 function LineChart({
+  label,
   values,
   cursorIndex,
   color,
   unit,
 }: {
+  label: string;
   values: (number | null)[];
   cursorIndex: number;
   color: string;
@@ -186,7 +243,7 @@ function LineChart({
   const valid = values.filter((v): v is number => v !== null);
 
   if (valid.length === 0) {
-    return <p className="text-sm text-gray-500">Nessun dato.</p>;
+    return <p className="text-muted-foreground text-sm">Nessun dato.</p>;
   }
 
   const W = 600;
@@ -205,10 +262,46 @@ function LineChart({
     .join(" ");
 
   const cursorX = (cursorIndex / (values.length - 1 || 1)) * W;
+  const current = values[cursorIndex];
 
   return (
     <div>
-      <div className="mb-1 flex justify-between text-xs text-gray-500">
+      <div className="mb-1 flex items-baseline justify-between gap-2">
+        <span className="flex items-center gap-2 text-sm font-medium">
+          <span
+            aria-hidden
+            className="size-2 rounded-full"
+            style={{ backgroundColor: color }}
+          />
+          {label}
+        </span>
+
+        {/* Il valore sotto al cursore: senza questo il grafico si legge
+            solo "a occhio" e lo slider non serve a niente di preciso. */}
+        <span className="font-mono text-sm tabular-nums">
+          {current !== null && current !== undefined
+            ? `${current.toFixed(1)} ${unit}`
+            : "—"}
+        </span>
+      </div>
+
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        preserveAspectRatio="none"
+        className="bg-muted/30 h-24 w-full rounded-lg border"
+      >
+        <polyline points={points} fill="none" stroke={color} strokeWidth={2} />
+        <line
+          x1={cursorX}
+          y1={0}
+          x2={cursorX}
+          y2={H}
+          stroke="var(--muted-foreground)"
+          strokeDasharray="4 2"
+        />
+      </svg>
+
+      <div className="text-muted-foreground mt-1 flex justify-between font-mono text-xs">
         <span>
           {min.toFixed(1)} {unit}
         </span>
@@ -216,17 +309,6 @@ function LineChart({
           {max.toFixed(1)} {unit}
         </span>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full rounded border bg-white">
-        <polyline points={points} fill="none" stroke={color} strokeWidth={2} />
-        <line
-          x1={cursorX}
-          y1={0}
-          x2={cursorX}
-          y2={H}
-          stroke="#94a3b8"
-          strokeDasharray="4 2"
-        />
-      </svg>
     </div>
   );
 }
@@ -247,7 +329,9 @@ function Telemetry() {
   const [savingReference, setSavingReference] = useState(false);
 
   const [sql, setSql] = useState("");
-  const [queryRows, setQueryRows] = useState<any[] | null>(null);
+  // Le colonne dipendono dalla query scritta dall'utente, quindi la
+  // forma della riga si conosce solo a runtime.
+  const [queryRows, setQueryRows] = useState<QueryRow[] | null>(null);
   const [queryError, setQueryError] = useState<string | null>(null);
   const [querying, setQuerying] = useState(false);
 
@@ -299,7 +383,7 @@ function Telemetry() {
 
   const points = lapTelemetryQuery.data?.points ?? [];
 
-  const tables = selectedImport?.tables
+  const tables: TableInfo[] = selectedImport?.tables
     ? JSON.parse(selectedImport.tables)
     : [];
 
@@ -369,165 +453,229 @@ function Telemetry() {
   }
 
   return (
-    <div className="space-y-6 p-8">
-      <div>
-        <h1 className="text-2xl font-bold">Telemetria (LMU)</h1>
-        <p className="text-sm text-gray-500">
-          Importa un file .duckdb esportato da Le Mans Ultimate, scegli un giro
-          e visualizza mappa e grafici.
-        </p>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Telemetria (LMU)"
+        description="Importa un file .duckdb esportato da Le Mans Ultimate, scegli un giro e visualizza mappa e grafici."
+      />
 
-      <div className="rounded-lg border p-4">
-        <h2 className="mb-4 text-lg font-semibold">Nuovo import</h2>
+      <Card>
+        <CardHeader>
+          <CardTitle>Nuovo import</CardTitle>
+        </CardHeader>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <select
-            className="rounded border p-2"
-            value={carId}
-            onChange={(e) => setCarId(e.target.value)}
-          >
-            <option value="">Nessuna auto associata</option>
-            {carsQuery.data?.items?.map((car) => (
-              <option key={car.id} value={car.id}>
-                {car.name}
-              </option>
-            ))}
-          </select>
+        <CardContent>
+          <div className="grid gap-4 sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)_auto] sm:items-end">
+            <div className="space-y-2">
+              <Label htmlFor="import-car">Auto associata</Label>
+              <Select
+                value={carId || NONE}
+                onValueChange={(value) =>
+                  setCarId(value === NONE ? "" : value)
+                }
+              >
+                <SelectTrigger id="import-car" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
 
-          <input
-            type="file"
-            accept=".duckdb"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-          />
+                <SelectContent>
+                  <SelectItem value={NONE}>Nessuna auto associata</SelectItem>
+                  {carsQuery.data?.items?.map((car) => (
+                    <SelectItem key={car.id} value={car.id}>
+                      {car.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-          <button
-            className="rounded border px-4 py-2 disabled:opacity-50"
-            onClick={handleUpload}
-            disabled={!file || uploading}
-          >
-            {uploading ? "Importazione..." : "Importa"}
-          </button>
-        </div>
-      </div>
+            <div className="space-y-2">
+              <Label htmlFor="import-file">File .duckdb</Label>
+              <Input
+                id="import-file"
+                type="file"
+                accept=".duckdb"
+                className="cursor-pointer"
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              />
+            </div>
+
+            <Button onClick={handleUpload} disabled={!file || uploading}>
+              <Upload className="size-4" />
+              {uploading ? "Importazione..." : "Importa"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <div className="rounded-lg border p-4">
-          <h2 className="mb-4 text-lg font-semibold">Import salvati</h2>
+        <Card>
+          <CardHeader>
+            <CardTitle>Import salvati</CardTitle>
+          </CardHeader>
 
-          <div className="space-y-3">
+          <CardContent className="space-y-3">
+            {importsQuery.isPending && <Skeleton className="h-24 rounded-lg" />}
+
             {importsQuery.data?.items?.map((item) => (
               <div
                 key={item.id}
-                className={`cursor-pointer rounded border p-3 ${
-                  selectedImport?.id === item.id ? "border-blue-500" : ""
-                }`}
                 onClick={() => {
                   setSelectedImport(item);
                   setSelectedLap(null);
                   setQueryRows(null);
                   setQueryError(null);
                 }}
+                className={
+                  selectedImport?.id === item.id
+                    ? "border-primary bg-primary/5 cursor-pointer rounded-lg border p-3"
+                    : "hover:border-foreground/20 cursor-pointer rounded-lg border p-3 transition-colors"
+                }
               >
-                <div className="font-medium">{item.fileName}</div>
-                <div className="text-sm text-gray-500">
-                  Stato: {item.status}
-                  {item.errorMessage && ` · ${item.errorMessage}`}
+                <div className="truncate font-medium">{item.fileName}</div>
+
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <Badge
+                    variant={
+                      item.status === "parsed"
+                        ? "secondary"
+                        : item.status === "error"
+                          ? "destructive"
+                          : "outline"
+                    }
+                  >
+                    {item.status}
+                  </Badge>
+
+                  {item.errorMessage && (
+                    <span className="text-destructive text-xs">
+                      {item.errorMessage}
+                    </span>
+                  )}
                 </div>
 
-                <button
-                  className="mt-2 text-sm text-red-600 underline"
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:text-destructive mt-2"
                   onClick={(e) => {
                     e.stopPropagation();
                     handleDeleteImport(item.id);
                   }}
                 >
+                  <Trash2 className="size-3.5" />
                   Elimina
-                </button>
+                </Button>
               </div>
             ))}
 
-            {!importsQuery.data?.items?.length && (
-              <p className="text-sm text-gray-500">Nessun import ancora.</p>
+            {!importsQuery.isPending && !importsQuery.data?.items?.length && (
+              <p className="text-muted-foreground text-sm">
+                Nessun import ancora.
+              </p>
             )}
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
-        <div className="rounded-lg border p-4">
-          <h2 className="mb-4 text-lg font-semibold">Giri</h2>
+        <Card>
+          <CardHeader>
+            <CardTitle>Giri</CardTitle>
+          </CardHeader>
 
-          {!selectedImport && (
-            <p className="text-sm text-gray-500">Seleziona prima un import.</p>
-          )}
+          <CardContent>
+            {!selectedImport && (
+              <p className="text-muted-foreground text-sm">
+                Seleziona prima un import.
+              </p>
+            )}
 
-          {selectedImport && lapsQuery.isPending && <p>Caricamento...</p>}
+            {selectedImport && lapsQuery.isPending && (
+              <Skeleton className="h-20 rounded-lg" />
+            )}
 
-          <div className="grid grid-cols-4 gap-2">
-            {lapsQuery.data?.laps?.map((lap) => (
-              <button
-                key={lap.lapNumber}
-                className={`rounded border px-2 py-1 text-sm ${
-                  selectedLap === lap.lapNumber
-                    ? "border-blue-500 bg-blue-50"
-                    : ""
-                }`}
-                onClick={() => {
-                  setSelectedLap(lap.lapNumber);
-                  setCursorIndex(0);
-                }}
-              >
-                Giro {lap.lapNumber}
-              </button>
-            ))}
-          </div>
-        </div>
+            {selectedImport && !lapsQuery.isPending && (
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                {lapsQuery.data?.laps?.map((lap) => (
+                  <Button
+                    key={lap.lapNumber}
+                    variant={
+                      selectedLap === lap.lapNumber ? "default" : "outline"
+                    }
+                    size="sm"
+                    className="font-mono"
+                    onClick={() => {
+                      setSelectedLap(lap.lapNumber);
+                      setCursorIndex(0);
+                    }}
+                  >
+                    {lap.lapNumber}
+                  </Button>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-        <div className="rounded-lg border p-4">
-          <h2 className="mb-4 text-lg font-semibold">Struttura file</h2>
+        <Card>
+          <CardHeader>
+            <CardTitle>Struttura file</CardTitle>
+          </CardHeader>
 
-          {!selectedImport && (
-            <p className="text-sm text-gray-500">
-              Seleziona un import per vedere le tabelle contenute.
-            </p>
-          )}
+          <CardContent>
+            {!selectedImport && (
+              <p className="text-muted-foreground text-sm">
+                Seleziona un import per vedere le tabelle contenute.
+              </p>
+            )}
 
-          {selectedImport && (
-            <div className="max-h-60 space-y-2 overflow-y-auto text-xs">
-              {tables.map((table: any) => (
-                <div key={table.name} className="rounded border p-2">
-                  <div className="font-medium">
-                    {table.name} ({table.rowCount} righe)
+            {selectedImport && (
+              <div className="max-h-60 space-y-2 overflow-y-auto">
+                {tables.map((table) => (
+                  <div
+                    key={table.name}
+                    className="flex items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-xs"
+                  >
+                    <span className="truncate font-medium">{table.name}</span>
+                    <span className="text-muted-foreground shrink-0 font-mono">
+                      {table.rowCount}
+                    </span>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {selectedLap !== null && (
-        <div className="rounded-lg border p-4">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold">
-              Giro {selectedLap} — mappa e canali
-            </h2>
+        <Card>
+          <CardHeader className="gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <CardTitle>Giro {selectedLap} — mappa e canali</CardTitle>
 
-            <div className="flex items-center gap-2">
-              <select
-                className="rounded border p-2 text-sm"
-                value={trackId}
-                onChange={(e) => setTrackId(e.target.value)}
+            <div className="flex flex-wrap items-center gap-2">
+              <Select
+                value={trackId || NONE}
+                onValueChange={(value) =>
+                  setTrackId(value === NONE ? "" : value)
+                }
               >
-                <option value="">Circuito...</option>
-                {tracksQuery.data?.items?.map((track) => (
-                  <option key={track.id} value={track.id}>
-                    {track.name}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger size="sm" className="w-40">
+                  <SelectValue placeholder="Circuito..." />
+                </SelectTrigger>
 
-              <button
-                className="rounded border px-3 py-2 text-sm disabled:opacity-50"
+                <SelectContent>
+                  <SelectItem value={NONE}>Circuito...</SelectItem>
+                  {tracksQuery.data?.items?.map((track) => (
+                    <SelectItem key={track.id} value={track.id}>
+                      {track.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={handleSaveReference}
                 disabled={!trackId || savingReference || points.length === 0}
                 title="Usa questo giro come sagoma fissa del circuito"
@@ -535,126 +683,139 @@ function Telemetry() {
                 {savingReference
                   ? "Salvataggio..."
                   : "Usa come tracciato di riferimento"}
-              </button>
+              </Button>
             </div>
-          </div>
+          </CardHeader>
 
-          {lapTelemetryQuery.isPending && <p>Caricamento telemetria...</p>}
+          <CardContent>
+            {lapTelemetryQuery.isPending && (
+              <Skeleton className="h-80 rounded-lg" />
+            )}
 
-          {points.length > 0 && (
-            <div className="space-y-4">
-              <input
-                type="range"
-                min={0}
-                max={points.length - 1}
-                value={cursorIndex}
-                onChange={(e) => setCursorIndex(Number(e.target.value))}
-                className="w-full"
-              />
-              <p className="text-sm text-gray-500">
-                t = {points[cursorIndex]?.t.toFixed(2)}s
-              </p>
+            {points.length > 0 && (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <input
+                    type="range"
+                    min={0}
+                    max={points.length - 1}
+                    value={cursorIndex}
+                    onChange={(e) => setCursorIndex(Number(e.target.value))}
+                    className="accent-primary w-full"
+                  />
 
-              <div className="grid gap-4 lg:grid-cols-2">
-                <TrackMap
-                  referencePoints={referencePoints}
-                  points={points}
-                  cursorIndex={cursorIndex}
-                />
+                  <p className="text-muted-foreground font-mono text-sm tabular-nums">
+                    t = {points[cursorIndex]?.t.toFixed(2)}s
+                  </p>
+                </div>
 
-                <div className="space-y-4">
-                  <div>
-                    <p className="mb-1 text-sm font-medium">Velocità (km/h)</p>
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <TrackMap
+                    referencePoints={referencePoints}
+                    points={points}
+                    cursorIndex={cursorIndex}
+                  />
+
+                  <div className="space-y-4">
                     <LineChart
+                      label="Velocità"
                       values={points.map((p) => p.speedKmh)}
                       cursorIndex={cursorIndex}
-                      color="#2563eb"
+                      color={CHANNEL_COLOR.speed}
                       unit="km/h"
                     />
-                  </div>
-                  <div>
-                    <p className="mb-1 text-sm font-medium">Acceleratore (%)</p>
+
                     <LineChart
+                      label="Acceleratore"
                       values={points.map((p) => p.throttlePct)}
                       cursorIndex={cursorIndex}
-                      color="#16a34a"
+                      color={CHANNEL_COLOR.throttle}
                       unit="%"
                     />
-                  </div>
-                  <div>
-                    <p className="mb-1 text-sm font-medium">Freno (%)</p>
+
                     <LineChart
+                      label="Freno"
                       values={points.map((p) => p.brakePct)}
                       cursorIndex={cursorIndex}
-                      color="#dc2626"
+                      color={CHANNEL_COLOR.brake}
                       unit="%"
                     />
                   </div>
                 </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </CardContent>
+        </Card>
       )}
 
-      <div className="rounded-lg border p-4">
-        <h2 className="mb-4 text-lg font-semibold">Query esplorativa</h2>
+      <Card>
+        <CardHeader>
+          <CardTitle>Query esplorativa</CardTitle>
+        </CardHeader>
 
-        {!selectedImport && (
-          <p className="text-sm text-gray-500">Seleziona un import.</p>
-        )}
+        <CardContent>
+          {!selectedImport && (
+            <p className="text-muted-foreground text-sm">
+              Seleziona un import.
+            </p>
+          )}
 
-        {selectedImport && (
-          <div>
-            <textarea
-              className="w-full rounded border p-2 font-mono text-sm"
-              rows={3}
-              placeholder='SELECT * FROM "nome_tabella"'
-              value={sql}
-              onChange={(e) => setSql(e.target.value)}
-            />
+          {selectedImport && (
+            <div className="space-y-3">
+              <Textarea
+                className="font-mono text-sm"
+                rows={3}
+                placeholder='SELECT * FROM "nome_tabella"'
+                value={sql}
+                onChange={(e) => setSql(e.target.value)}
+              />
 
-            <button
-              className="mt-2 rounded border px-4 py-2 disabled:opacity-50"
-              onClick={handleRunQuery}
-              disabled={querying || !sql.trim()}
-            >
-              {querying ? "Esecuzione..." : "Esegui query"}
-            </button>
+              <Button
+                onClick={handleRunQuery}
+                disabled={querying || !sql.trim()}
+              >
+                {querying ? "Esecuzione..." : "Esegui query"}
+              </Button>
 
-            {queryError && (
-              <p className="mt-2 text-sm text-red-600">{queryError}</p>
-            )}
+              {queryError && (
+                <p className="text-destructive text-sm">{queryError}</p>
+              )}
 
-            {queryRows && queryRows.length > 0 && (
-              <div className="mt-3 overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr>
-                      {Object.keys(queryRows[0]).map((key) => (
-                        <th key={key} className="border p-1 text-left">
-                          {key}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {queryRows.map((row, i) => (
-                      <tr key={i}>
-                        {Object.values(row).map((value, j) => (
-                          <td key={j} className="border p-1">
-                            {String(value)}
-                          </td>
+              {queryRows && queryRows.length > 0 && (
+                <div className="overflow-x-auto rounded-lg border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        {Object.keys(queryRows[0]).map((key) => (
+                          <TableHead key={key}>{key}</TableHead>
                         ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+                      </TableRow>
+                    </TableHeader>
+
+                    <TableBody>
+                      {queryRows.map((row, i) => (
+                        <TableRow key={i}>
+                          {Object.values(row).map((value, j) => (
+                            <TableCell key={j} className="font-mono text-xs">
+                              {String(value)}
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+
+              {queryRows && queryRows.length === 0 && (
+                <p className="text-muted-foreground text-sm">
+                  La query non ha restituito righe.
+                </p>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

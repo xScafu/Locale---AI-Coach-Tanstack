@@ -1,12 +1,22 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { Trash2 } from "lucide-react";
 
 import {
   deleteSession,
   getSessionMessages,
   getSessions,
-} from "../services/session.api";
+} from "@/services/session.api";
+import PageHeader from "@/components/layout/PageHeader";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export const Route = createFileRoute("/session")({
   component: SessionsPage,
@@ -41,82 +51,109 @@ function SessionsPage() {
   }
 
   return (
-    <div className="space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-bold">Sessioni</h1>
-        <p className="text-sm text-gray-500">
-          Storico delle conversazioni con il coach.
-        </p>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Sessioni"
+        description="Storico delle conversazioni con il coach."
+      />
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-lg border p-4">
-          <h2 className="mb-4 text-lg font-semibold">Sessioni salvate</h2>
+        <Card>
+          <CardHeader>
+            <CardTitle>Sessioni salvate</CardTitle>
+          </CardHeader>
 
-          {sessionsQuery.isPending && <p>Caricamento...</p>}
-
-          {!sessionsQuery.isPending &&
-            (!sessionsQuery.data?.items ||
-              sessionsQuery.data.items.length === 0) && (
-              <p className="text-sm text-gray-500">Nessuna sessione ancora.</p>
+          <CardContent className="space-y-3">
+            {sessionsQuery.isPending && (
+              <>
+                <Skeleton className="h-24 rounded-lg" />
+                <Skeleton className="h-24 rounded-lg" />
+              </>
             )}
 
-          <div className="space-y-3">
+            {!sessionsQuery.isPending &&
+              (!sessionsQuery.data?.items ||
+                sessionsQuery.data.items.length === 0) && (
+                <p className="text-muted-foreground text-sm">
+                  Nessuna sessione ancora.
+                </p>
+              )}
+
             {sessionsQuery.data?.items?.map((session) => (
               <div
                 key={session.id}
-                className={`cursor-pointer rounded border p-3 ${
-                  selectedId === session.id ? "border-blue-500" : ""
-                }`}
                 onClick={() => setSelectedId(session.id)}
+                className={
+                  selectedId === session.id
+                    ? "border-primary bg-primary/5 cursor-pointer rounded-lg border p-3"
+                    : "hover:border-foreground/20 cursor-pointer rounded-lg border p-3 transition-colors"
+                }
               >
-                <div className="font-medium">{session.title}</div>
-                <div className="text-sm text-gray-500">
+                <div className="truncate font-medium">{session.title}</div>
+
+                <div className="text-muted-foreground mt-0.5 text-sm">
                   {formatDate(session.createdAt)} · {session.messageCount}{" "}
                   messaggi
                 </div>
 
-                <button
-                  className="mt-2 text-sm text-red-600 underline"
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:text-destructive mt-2"
                   onClick={(e) => {
                     e.stopPropagation();
                     handleDelete(session.id);
                   }}
                 >
+                  <Trash2 className="size-3.5" />
                   Elimina
-                </button>
+                </Button>
               </div>
             ))}
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
-        <div className="rounded-lg border p-4">
-          <h2 className="mb-4 text-lg font-semibold">Conversazione</h2>
+        <Card>
+          <CardHeader>
+            <CardTitle>Conversazione</CardTitle>
+          </CardHeader>
 
-          {!selectedId && (
-            <p className="text-sm text-gray-500">
-              Seleziona una sessione per vedere i messaggi.
-            </p>
-          )}
+          <CardContent>
+            {!selectedId && (
+              <p className="text-muted-foreground text-sm">
+                Seleziona una sessione per vedere i messaggi.
+              </p>
+            )}
 
-          {selectedId && messagesQuery.isPending && <p>Caricamento...</p>}
+            {selectedId && messagesQuery.isPending && (
+              <div className="space-y-3">
+                <Skeleton className="h-16 rounded-lg" />
+                <Skeleton className="h-16 rounded-lg" />
+              </div>
+            )}
 
-          <div className="max-h-[500px] space-y-3 overflow-y-auto">
-            {messagesQuery.data?.items?.map((message) => (
-              <div
-                key={message.id}
-                className={`rounded p-3 text-sm ${
-                  message.role === "user" ? "bg-blue-50" : "bg-slate-50"
-                }`}
-              >
-                <div className="mb-1 text-xs font-medium text-gray-500">
-                  {message.role === "user" ? "Tu" : "Coach"}
+            <div className="max-h-[500px] space-y-3 overflow-y-auto">
+              {messagesQuery.data?.items?.map((message) => (
+                <div
+                  key={message.id}
+                  className={
+                    message.role === "user"
+                      ? "bg-primary/10 rounded-lg p-3 text-sm"
+                      : "bg-muted rounded-lg p-3 text-sm"
+                  }
+                >
+                  <div className="text-muted-foreground mb-1 text-xs font-medium">
+                    {message.role === "user" ? "Tu" : "Coach"}
+                  </div>
+
+                  <div className="leading-relaxed whitespace-pre-wrap">
+                    {message.content}
+                  </div>
                 </div>
-                <div className="whitespace-pre-wrap">{message.content}</div>
-              </div>
-            ))}
-          </div>
-        </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

@@ -1,14 +1,23 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { ChevronRight, Trash2 } from "lucide-react";
 
+import { activateCar, createCar, deleteCar, getCars } from "@/services/garage.api";
+import { usePilotStore } from "@/stores/pilot.store";
+import PageHeader from "@/components/layout/PageHeader";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
-  activateCar,
-  createCar,
-  deleteCar,
-  getCars,
-} from "../services/garage.api.ts";
-import { usePilotStore } from "../stores/pilot.store.ts";
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 
 export const Route = createFileRoute("/garage/")({
   component: GaragePage,
@@ -94,138 +103,164 @@ function GaragePage() {
   }
 
   return (
-    <div className="space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-bold">Garage</h1>
-        <p className="text-sm text-gray-500">
-          {pilotId
+    <div className="space-y-6">
+      <PageHeader
+        title="Garage"
+        description={
+          pilotId
             ? `Pilota attivo: ${pilotName ?? pilotId}`
-            : "Nessun pilota attivo. Salva prima il profilo."}
-        </p>
-      </div>
+            : "Nessun pilota attivo. Salva prima il profilo."
+        }
+      />
 
       <div className="grid gap-4 md:grid-cols-2">
-        <div className="rounded-lg border p-4">
-          <h2 className="mb-4 text-lg font-semibold">Nuova auto</h2>
+        <Card className="h-fit">
+          <CardHeader>
+            <CardTitle>Nuova auto</CardTitle>
+          </CardHeader>
 
-          <div className="space-y-3">
-            <input
-              className="w-full rounded border p-2"
-              placeholder="Marca"
-              value={form.manufacturer}
-              onChange={(e) =>
-                setForm({ ...form, manufacturer: e.target.value })
-              }
-            />
+          <CardContent className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="car-manufacturer">Marca</Label>
+                <Input
+                  id="car-manufacturer"
+                  placeholder="Es. BMW"
+                  value={form.manufacturer}
+                  onChange={(e) =>
+                    setForm({ ...form, manufacturer: e.target.value })
+                  }
+                />
+              </div>
 
-            <input
-              className="w-full rounded border p-2"
-              placeholder="Nome auto"
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-            />
+              <div className="space-y-2">
+                <Label htmlFor="car-name">Nome auto</Label>
+                <Input
+                  id="car-name"
+                  placeholder="Es. M4 GT3"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                />
+              </div>
 
-            <input
-              className="w-full rounded border p-2"
-              placeholder="Simulatore"
-              value={form.simulator}
-              onChange={(e) => setForm({ ...form, simulator: e.target.value })}
-            />
+              <div className="space-y-2">
+                <Label htmlFor="car-simulator">Simulatore</Label>
+                <Input
+                  id="car-simulator"
+                  value={form.simulator}
+                  onChange={(e) =>
+                    setForm({ ...form, simulator: e.target.value })
+                  }
+                />
+              </div>
 
-            <input
-              className="w-full rounded border p-2"
-              placeholder="Categoria"
-              value={form.category}
-              onChange={(e) => setForm({ ...form, category: e.target.value })}
-            />
+              <div className="space-y-2">
+                <Label htmlFor="car-category">Categoria</Label>
+                <Input
+                  id="car-category"
+                  value={form.category}
+                  onChange={(e) =>
+                    setForm({ ...form, category: e.target.value })
+                  }
+                />
+              </div>
+            </div>
 
-            <textarea
-              className="w-full rounded border p-2"
-              placeholder="Note"
-              value={form.notes}
-              onChange={(e) => setForm({ ...form, notes: e.target.value })}
-            />
+            <div className="space-y-2">
+              <Label htmlFor="car-notes">Note</Label>
+              <Textarea
+                id="car-notes"
+                placeholder="Comportamento, gomme preferite, problemi ricorrenti..."
+                rows={3}
+                value={form.notes}
+                onChange={(e) => setForm({ ...form, notes: e.target.value })}
+              />
+            </div>
 
-            <button
-              className="rounded border px-4 py-2 disabled:opacity-50"
-              onClick={save}
-              disabled={!pilotId || saving}
-            >
+            <Button onClick={save} disabled={!pilotId || saving}>
               {saving ? "Salvataggio..." : "Salva auto"}
-            </button>
-          </div>
-        </div>
+            </Button>
+          </CardContent>
+        </Card>
 
-        <div className="rounded-lg border p-4">
-          <h2 className="mb-4 text-lg font-semibold">Auto salvate</h2>
+        <Card>
+          <CardHeader>
+            <CardTitle>Auto salvate</CardTitle>
+          </CardHeader>
 
-          {!pilotId && (
-            <p className="text-sm text-gray-500">
-              Salva prima un profilo pilota per vedere il garage.
-            </p>
-          )}
-
-          {pilotId && isPending && <p>Caricamento...</p>}
-
-          {pilotId &&
-            !isPending &&
-            (!data?.items || data.items.length === 0) && (
-              <p className="text-sm text-gray-500">Nessuna auto salvata.</p>
+          <CardContent className="space-y-3">
+            {!pilotId && (
+              <p className="text-muted-foreground text-sm">
+                Salva prima un profilo pilota per vedere il garage.
+              </p>
             )}
 
-          <div className="space-y-3">
+            {pilotId && isPending && (
+              <>
+                <Skeleton className="h-32 rounded-lg" />
+                <Skeleton className="h-32 rounded-lg" />
+              </>
+            )}
+
+            {pilotId &&
+              !isPending &&
+              (!data?.items || data.items.length === 0) && (
+                <p className="text-muted-foreground text-sm">
+                  Nessuna auto salvata.
+                </p>
+              )}
+
             {data?.items?.map((car) => (
-              <div key={car.id} className="rounded border p-3">
-                <div className="flex items-center justify-between">
-                  <div className="font-medium">
-                    {car.name}
-                    {car.isActive && (
-                      <span className="ml-2 rounded bg-green-100 px-2 py-0.5 text-xs text-green-700">
-                        Attiva
-                      </span>
-                    )}
-                  </div>
+              <div key={car.id} className="rounded-lg border p-3">
+                <div className="flex items-center gap-2">
+                  <span className="truncate font-medium">{car.name}</span>
+                  {car.isActive && <Badge>Attiva</Badge>}
                 </div>
 
-                <div className="text-sm text-gray-500">
+                <div className="text-muted-foreground mt-0.5 text-sm">
                   {car.manufacturer ?? "Senza marca"} ·{" "}
                   {car.category ?? "Senza categoria"} ·{" "}
                   {car.simulator ?? "Senza simulatore"}
                 </div>
 
-                {car.notes && <div className="mt-2 text-sm">{car.notes}</div>}
+                {car.notes && (
+                  <p className="mt-2 text-sm leading-relaxed">{car.notes}</p>
+                )}
 
-                <div className="mt-3 flex flex-wrap gap-3">
-                  <Link
-                    to="/garage/$carId"
-                    params={{ carId: car.id }}
-                    className="text-sm underline"
-                  >
-                    Apri dettaglio
-                  </Link>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button asChild variant="outline" size="sm">
+                    <Link to="/garage/$carId" params={{ carId: car.id }}>
+                      Apri dettaglio
+                      <ChevronRight className="size-3.5" />
+                    </Link>
+                  </Button>
 
                   {!car.isActive && (
-                    <button
-                      className="text-sm text-blue-600 underline disabled:opacity-50"
+                    <Button
+                      variant="outline"
+                      size="sm"
                       disabled={busyCarId === car.id}
                       onClick={() => handleActivate(car.id)}
                     >
                       Imposta come attiva
-                    </button>
+                    </Button>
                   )}
 
-                  <button
-                    className="text-sm text-red-600 underline disabled:opacity-50"
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive hover:text-destructive"
                     disabled={busyCarId === car.id}
                     onClick={() => handleDelete(car.id)}
                   >
+                    <Trash2 className="size-3.5" />
                     Elimina
-                  </button>
+                  </Button>
                 </div>
               </div>
             ))}
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

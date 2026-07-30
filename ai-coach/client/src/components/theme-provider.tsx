@@ -18,10 +18,8 @@ type ThemeProviderState = {
 
 const ThemeProviderContext = createContext<ThemeProviderState | null>(null);
 
-function systemTheme(): "dark" | "light" {
-  return window.matchMedia("(prefers-color-scheme: dark)").matches
-    ? "dark"
-    : "light";
+function prefersDark() {
+  return window.matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
 export function ThemeProvider({
@@ -33,41 +31,32 @@ export function ThemeProvider({
     () => (localStorage.getItem(storageKey) as Theme | null) ?? defaultTheme
   );
 
-  const [resolvedTheme, setResolvedTheme] = useState<"dark" | "light">(() =>
-    theme === "system" ? systemTheme() : theme
-  );
+  const [systemDark, setSystemDark] = useState(prefersDark);
+
+  // Derivato in fase di render invece che tenuto in uno stato
+  // sincronizzato da un effect: uno stato in piu' significherebbe un
+  // render a vuoto a ogni cambio di tema, ed e' esattamente il caso che
+  // react-hooks/set-state-in-effect segnala.
+  const resolvedTheme: "dark" | "light" =
+    theme === "system" ? (systemDark ? "dark" : "light") : theme;
 
   useEffect(() => {
-    const resolved = theme === "system" ? systemTheme() : theme;
-
-    setResolvedTheme(resolved);
-
     const root = document.documentElement;
+
     root.classList.remove("light", "dark");
-    root.classList.add(resolved);
-  }, [theme]);
+    root.classList.add(resolvedTheme);
+  }, [resolvedTheme]);
 
   // Con theme === "system" il tema deve seguire l'OS anche mentre l'app
   // e' aperta: senza questo listener il cambio di modalita' di Windows
   // si vedrebbe solo dopo un reload.
   useEffect(() => {
-    if (theme !== "system") return;
-
     const media = window.matchMedia("(prefers-color-scheme: dark)");
-
-    const onChange = () => {
-      const resolved = systemTheme();
-
-      setResolvedTheme(resolved);
-
-      const root = document.documentElement;
-      root.classList.remove("light", "dark");
-      root.classList.add(resolved);
-    };
+    const onChange = (event: MediaQueryListEvent) => setSystemDark(event.matches);
 
     media.addEventListener("change", onChange);
     return () => media.removeEventListener("change", onChange);
-  }, [theme]);
+  }, []);
 
   const value: ThemeProviderState = {
     theme,
