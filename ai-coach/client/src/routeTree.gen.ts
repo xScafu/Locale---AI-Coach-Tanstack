@@ -16,7 +16,6 @@ import { Route as GarageRouteImport } from './routes/garage'
 import { Route as KnowledgeRouteImport } from './routes/knowledge'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as SessionRouteImport } from './routes/session'
-import { Route as SessionsRouteImport } from './routes/sessions'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as TelemetryRouteImport } from './routes/telemetry'
 import { Route as TracksRouteImport } from './routes/tracks'
@@ -59,11 +58,6 @@ const SessionRoute = SessionRouteImport.update({
   path: '/session',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SessionsRoute = SessionsRouteImport.update({
-  id: '/sessions',
-  path: '/sessions',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -103,7 +97,6 @@ export interface FileRoutesByFullPath {
   '/knowledge': typeof KnowledgeRoute
   '/profile': typeof ProfileRoute
   '/session': typeof SessionRoute
-  '/sessions': typeof SessionsRoute
   '/settings': typeof SettingsRoute
   '/telemetry': typeof TelemetryRoute
   '/tracks': typeof TracksRoute
@@ -118,7 +111,6 @@ export interface FileRoutesByTo {
   '/knowledge': typeof KnowledgeRoute
   '/profile': typeof ProfileRoute
   '/session': typeof SessionRoute
-  '/sessions': typeof SessionsRoute
   '/settings': typeof SettingsRoute
   '/telemetry': typeof TelemetryRoute
   '/tracks': typeof TracksRoute
@@ -135,7 +127,6 @@ export interface FileRoutesById {
   '/knowledge': typeof KnowledgeRoute
   '/profile': typeof ProfileRoute
   '/session': typeof SessionRoute
-  '/sessions': typeof SessionsRoute
   '/settings': typeof SettingsRoute
   '/telemetry': typeof TelemetryRoute
   '/tracks': typeof TracksRoute
@@ -153,7 +144,6 @@ export interface FileRouteTypes {
     | '/knowledge'
     | '/profile'
     | '/session'
-    | '/sessions'
     | '/settings'
     | '/telemetry'
     | '/tracks'
@@ -168,7 +158,6 @@ export interface FileRouteTypes {
     | '/knowledge'
     | '/profile'
     | '/session'
-    | '/sessions'
     | '/settings'
     | '/telemetry'
     | '/tracks'
@@ -184,7 +173,6 @@ export interface FileRouteTypes {
     | '/knowledge'
     | '/profile'
     | '/session'
-    | '/sessions'
     | '/settings'
     | '/telemetry'
     | '/tracks'
@@ -201,7 +189,6 @@ export interface RootRouteChildren {
   KnowledgeRoute: typeof KnowledgeRoute
   ProfileRoute: typeof ProfileRoute
   SessionRoute: typeof SessionRoute
-  SessionsRoute: typeof SessionsRoute
   SettingsRoute: typeof SettingsRoute
   TelemetryRoute: typeof TelemetryRoute
   TracksRoute: typeof TracksRoute
@@ -257,13 +244,6 @@ declare module '@tanstack/react-router' {
       path: '/session'
       fullPath: '/session'
       preLoaderRoute: typeof SessionRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/sessions': {
-      id: '/sessions'
-      path: '/sessions'
-      fullPath: '/sessions'
-      preLoaderRoute: typeof SessionsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -332,7 +312,6 @@ const rootRouteChildren: RootRouteChildren = {
   KnowledgeRoute: KnowledgeRoute,
   ProfileRoute: ProfileRoute,
   SessionRoute: SessionRoute,
-  SessionsRoute: SessionsRoute,
   SettingsRoute: SettingsRoute,
   TelemetryRoute: TelemetryRoute,
   TracksRoute: TracksRoute,
