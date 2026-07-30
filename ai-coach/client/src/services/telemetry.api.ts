@@ -3,11 +3,47 @@ const API_URL = "http://localhost:3001";
 export type TelemetryImport = {
   id: string;
   carId: string | null;
+  trackId: string | null;
+  pilotId: string | null;
   fileName: string;
   filePath: string;
   tables: string | null;
   status: "pending" | "parsed" | "error";
   errorMessage: string | null;
+  metadata: string | null;
+  recordedAt: number | null;
+};
+
+export type SyncEntity = {
+  id: string;
+  name: string;
+  action: "created" | "matched";
+  activated: boolean;
+};
+
+// Cosa il server ha riconosciuto nel file e come ha allineato l'app.
+export type ImportSync = {
+  pilot: SyncEntity | null;
+  car: SyncEntity | null;
+  track: SyncEntity | null;
+  session: {
+    type: string | null;
+    weather: string | null;
+    recordedAt: number | null;
+  };
+  profile: {
+    corners: number;
+    lengthM: number;
+    bestLapSeconds: number;
+    theoreticalLapSeconds: number | null;
+  } | null;
+};
+
+export type UploadResult = {
+  id: string;
+  status: "parsed" | "error";
+  sync?: ImportSync;
+  error?: string;
 };
 
 export async function uploadTelemetry(file: File, carId?: string) {
@@ -20,7 +56,13 @@ export async function uploadTelemetry(file: File, carId?: string) {
     body: formData,
   });
 
-  return response.json();
+  const body = (await response.json()) as UploadResult;
+
+  if (!response.ok) {
+    throw new Error(body.error ?? "Importazione non riuscita");
+  }
+
+  return body;
 }
 
 export async function getTelemetryImports(carId?: string) {

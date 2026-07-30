@@ -1,6 +1,7 @@
 import { Brain, Car, Flag, MessageSquare, User } from "lucide-react";
 
 import DashboardCard from "@/components/dashboard/DashboardCard";
+import TelemetryUploader from "@/components/dashboard/TelemetryUploader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDashboard } from "@/hooks/useDashboard";
@@ -57,6 +58,8 @@ export default function Dashboard() {
           Il contesto che il coach sta usando in questo momento.
         </p>
       </div>
+
+      <TelemetryUploader />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <DashboardCard

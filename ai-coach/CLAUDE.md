@@ -121,6 +121,31 @@ toccarla. I canali hanno frequenze diverse e vengono riallineati per indice tram
 
 L'upload passa da un `bodyLimit` dedicato di 200 MB in `index.ts`.
 
+### Import: un file configura l'app
+
+`POST /api/telemetry/import` non salva solo un file: `import-sync.service.ts` legge i
+metadata e **allinea l'app alla sessione contenuta nel file**. Pilota (`DriverName`), auto
+(`CarName` + `CarClass`) e circuito (`TrackName` + `TrackLayout`) vengono riconosciuti o
+creati, **resi attivi**, collegati all'import, e il profilo del tracciato rigenerato.
+
+Il confronto dei nomi passa da `namesMatch` (normalizzato, uno contenuto nell'altro), lo
+stesso usato per i circuiti: ricaricare lo stesso file due volte non crea doppioni, la
+seconda volta le entità risultano `matched` invece di `created`.
+
+La sincronizzazione **non può far fallire l'import**: se un metadato manca o qualcosa
+esplode, l'import resta `parsed` e il campo corrispondente torna `null`. Il risultato
+(`sync`) descrive cosa è stato creato e cosa riconosciuto, e il client lo mostra —
+un'app che si riconfigura da sola senza spiegarsi sembrerebbe un bug.
+
+L'ordine conta: senza pilota non si può creare nient'altro, perché `cars.pilot_id` e
+`tracks.pilot_id` sono `NOT NULL`.
+
+**Il `carId` scelto a mano nel form vince** sul metadato: è una correzione esplicita.
+
+Lato client `TelemetryUploader` (in dashboard) deve anche aggiornare `pilot.store`: il
+pilota attivo vive sia sul server (`isActive`) sia in `localStorage`, e se i due
+divergono Garage e Circuiti filtrano per il pilota sbagliato e appaiono vuoti.
+
 ### Profilo del tracciato
 
 Un circuito **non** è una scheda compilata a mano: le curve sono ricavate dalla
@@ -236,17 +261,13 @@ univoco**, più segmenti possono condividere la stessa etichetta.
   dentro `features/chat/`, non uno omonimo altrove.
 - **Nomi di file con refusi**, da non "correggere" alla cieca perché gli import sono
   coerenti con il refuso: `services/settings.ap.ts` (manca la `i` di `api`).
-- La dashboard mostra il **primo** pilota/auto/circuito, non quello attivo:
-  `dashboard.repository.ts` fa `.limit(1)` senza filtrare su `isActive`. Divergenza dal
-  resto dell'app, che passa sempre da `getActivePilot` / `getActiveCar`.
-- **L'import di telemetria fallisce** con `Do not know how to serialize a BigInt`:
-  `inspectDuckDbFile` mette il `rowCount` di `COUNT(*)` (un BigInt, per DuckDB) dentro un
-  `JSON.stringify`, che sui BigInt lancia. Va convertito con `Number(...)` prima di
-  serializzare.
-- Il pilota attivo esiste in **due posti che possono divergere**: `isActive` sul DB lato
-  server e `pilotId` in `stores/pilot.store.ts`, che vive solo in `localStorage`. Su un
-  browser che non l'ha mai popolato, Garage/Circuiti/Telemetria si comportano come se non
-  ci fosse alcun pilota, anche quando il server ne ha uno attivo.
+- Il pilota attivo esiste in **due posti che possono divergere**: `isActive` sul DB e
+  `pilotId` in `stores/pilot.store.ts` (solo `localStorage`). L'uploader li tiene
+  allineati, ma su un browser che non ha mai importato nulla Garage/Circuiti/Telemetria
+  filtrano per un pilota diverso da quello attivo e sembrano vuoti.
+- **DuckDB restituisce BigInt** da `COUNT(*)` e simili, e `JSON.stringify` sui BigInt
+  lancia. `inspectDuckDbFile` e `runReadOnlyQuery` convertono già con `Number(...)`:
+  fallo anche in ogni nuova query che finisce serializzata, o l'import torna "error".
 - `server/.env.example` cita `DATABASE_URL`, ma non è letto da nessuna parte: il path del
   DB è hardcoded in `db/index.ts` e in `drizzle.config.ts`.
 - La tabella `settings` ha `autoSummaryEvery`, ma `memory.manager.ts` usa `20` hardcoded.

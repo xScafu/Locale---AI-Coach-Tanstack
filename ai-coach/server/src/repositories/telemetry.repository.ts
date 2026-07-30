@@ -6,11 +6,15 @@ export type TelemetryImportInsert = {
   id: string;
   carId?: string | null;
   trackId?: string | null;
+  pilotId?: string | null;
   fileName: string;
   filePath: string;
   tables?: string | null;
   status: string;
   errorMessage?: string | null;
+  // JSON dei metadata del file, copiati all'import.
+  metadata?: string | null;
+  recordedAt?: number | null;
 };
 
 export type TelemetryImportUpdate = Partial<Omit<TelemetryImportInsert, "id">>;

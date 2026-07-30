@@ -20,7 +20,7 @@ import {
   runReadOnlyQuery,
 } from "../services/telemetry.service";
 
-import { linkImportToTrack } from "../services/track-profile.service";
+import { syncImportFromMetadata } from "../services/import-sync.service";
 
 const telemetry = new Hono();
 const STORAGE_DIR = path.resolve("./data/telemetry");
@@ -146,20 +146,18 @@ telemetry.post("/import", async (c) => {
       status: "parsed",
     });
 
-    // Collega l'import al circuito dichiarato nel file e rigenera il
-    // profilo del tracciato. Non puo' far fallire l'import: se non
-    // riesce, restituisce semplicemente trackId null.
-    const link = await linkImportToTrack(id, filePath, carId);
+    // Allinea l'app alla sessione contenuta nel file: pilota, auto e
+    // circuito vengono riconosciuti o creati e resi attivi, e il
+    // profilo del tracciato rigenerato. Non puo' far fallire l'import.
+    const sync = await syncImportFromMetadata(id, filePath);
 
-    return c.json({
-      id,
-      status: "parsed",
-      tables,
-      trackId: link.trackId,
-      trackName: link.trackName,
-      trackCreated: link.created,
-      cornersDetected: link.profile?.corners.length ?? null,
-    });
+    // Un carId scelto a mano nel form vince sul metadato: e' una
+    // correzione esplicita dell'utente.
+    if (carId && carId !== sync.car?.id) {
+      await updateTelemetryImport(id, { carId });
+    }
+
+    return c.json({ id, status: "parsed", tables, sync });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Errore sconosciuto";
 

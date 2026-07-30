@@ -268,6 +268,10 @@ export const telemetryImports = sqliteTable("telemetry_imports", {
   // circuito e il profilo del tracciato non si puo' costruire.
   trackId: text("track_id").references(() => tracks.id),
 
+  // Anche il pilota viene dal file ("DriverName"): un import appartiene
+  // a chi lo ha guidato, non a chi era attivo nell'app in quel momento.
+  pilotId: text("pilot_id").references(() => pilots.id),
+
   fileName: text("file_name").notNull(),
 
   filePath: text("file_path").notNull(),
@@ -278,6 +282,16 @@ export const telemetryImports = sqliteTable("telemetry_imports", {
   status: text("status").notNull(), // "pending" | "parsed" | "error"
 
   errorMessage: text("error_message"),
+
+  // Tutti i metadata del file in JSON (DriverName, CarName, CarClass,
+  // TrackName, TrackLayout, SessionType, WeatherConditions...): copiati
+  // qui una volta sola per non dover riaprire il .duckdb ogni volta che
+  // servono in elenco.
+  metadata: text("metadata"),
+
+  // Quando la sessione e' stata registrata, da "RecordingTime". Diverso
+  // da createdAt, che e' quando il file e' stato caricato nell'app.
+  recordedAt: integer("recorded_at"),
 
   createdAt: integer("created_at")
     .$defaultFn(() => Math.floor(Date.now() / 1000))

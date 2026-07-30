@@ -36,6 +36,13 @@
       "when": 1785440977079,
       "tag": "0004_illegal_dust",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1785453202660,
+      "tag": "0005_robust_nomad",
+      "breakpoints": true
     }
   ]
 }

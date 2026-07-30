@@ -1,37 +1,18 @@
-import { randomUUID } from "node:crypto";
-
 import {
   computeTrackProfile,
   getMetadata,
   type TrackProfile,
 } from "./telemetry.service";
 import {
-  createTrack,
   getTrackById,
-  getTracksByPilot,
   saveTrackProfile,
 } from "../repositories/track.repository";
-import { getCarById } from "../repositories/car.repository";
-import { getActivePilot } from "../repositories/profile.repository";
 import {
   getTelemetryImports,
   updateTelemetryImport,
 } from "../repositories/telemetry.repository";
 
-// A quale pilota appartiene un import: l'auto associata lo dice con
-// certezza, altrimenti si ripiega sul pilota attivo. Senza pilota non
-// si puo' creare un circuito, perche' tracks.pilot_id e' NOT NULL.
-async function resolvePilotId(carId: string | null) {
-  if (carId) {
-    const car = await getCarById(carId);
-    if (car) return car.pilotId;
-  }
-
-  const pilot = await getActivePilot();
-  return pilot?.id ?? null;
-}
-
-function normalize(value: string) {
+export function normalize(value: string) {
   return value
     .toLowerCase()
     .normalize("NFD")
@@ -44,99 +25,13 @@ function normalize(value: string) {
 // Nazionale Monza"), mentre il pilota il circuito lo chiama "Monza".
 // Un confronto esatto creerebbe un doppione a ogni import, quindi si
 // accetta anche il caso in cui un nome sia contenuto nell'altro.
-function namesMatch(a: string, b: string) {
+export function namesMatch(a: string, b: string) {
   const x = normalize(a);
   const y = normalize(b);
 
   if (!x || !y) return false;
 
   return x === y || x.includes(y) || y.includes(x);
-}
-
-async function findMatchingTrack(pilotId: string, trackName: string) {
-  const candidates = await getTracksByPilot(pilotId);
-
-  return (
-    candidates.find((t) => normalize(t.name) === normalize(trackName)) ??
-    candidates.find((t) => namesMatch(t.name, trackName)) ??
-    null
-  );
-}
-
-export type LinkResult = {
-  trackId: string | null;
-  trackName: string | null;
-  created: boolean;
-  profile: TrackProfile | null;
-};
-
-// Collega un import appena caricato al circuito che dichiara nei suoi
-// metadata, creandolo se non esiste, e rigenera il profilo del
-// tracciato a partire da quel file.
-//
-// Non lancia mai: un import valido non deve fallire solo perche' il
-// profilo non si e' potuto calcolare (file senza G laterale, giri
-// troppo corti, circuito non deducibile). In quel caso l'import resta
-// utilizzabile e il circuito semplicemente non viene collegato.
-export async function linkImportToTrack(
-  importId: string,
-  filePath: string,
-  carId: string | null
-): Promise<LinkResult> {
-  const empty: LinkResult = {
-    trackId: null,
-    trackName: null,
-    created: false,
-    profile: null,
-  };
-
-  try {
-    const metadata = await getMetadata(filePath);
-
-    const trackName = metadata["TrackName"]?.trim();
-    if (!trackName) return empty;
-
-    const pilotId = await resolvePilotId(carId);
-    if (!pilotId) return { ...empty, trackName };
-
-    const variant = metadata["TrackLayout"]?.trim() || null;
-
-    let track = await findMatchingTrack(pilotId, trackName);
-    let created = false;
-
-    if (!track) {
-      const id = randomUUID();
-
-      await createTrack({
-        id,
-        pilotId,
-        name: trackName,
-        country: null,
-        variant,
-      });
-
-      track = await getTrackById(id);
-      created = true;
-    }
-
-    if (!track) return { ...empty, trackName };
-
-    await updateTelemetryImport(importId, { trackId: track.id });
-
-    const profile = await computeTrackProfile(filePath);
-
-    if (profile) {
-      await saveTrackProfile(track.id, JSON.stringify(profile), importId, {
-        lengthM: profile.lengthM,
-        cornerCount: profile.corners.length,
-      });
-    }
-
-    return { trackId: track.id, trackName, created, profile };
-  } catch (error) {
-    console.error("[track-profile] collegamento fallito:", error);
-    return empty;
-  }
 }
 
 // Rigenera il profilo dall'import piu' recente di questo circuito.
@@ -184,12 +79,10 @@ export async function regenerateTrackProfile(
       const profile = await computeTrackProfile(candidate.filePath);
       if (!profile) continue;
 
-      await saveTrackProfile(
-        trackId,
-        JSON.stringify(profile),
-        candidate.id,
-        { lengthM: profile.lengthM, cornerCount: profile.corners.length }
-      );
+      await saveTrackProfile(trackId, JSON.stringify(profile), candidate.id, {
+        lengthM: profile.lengthM,
+        cornerCount: profile.corners.length,
+      });
 
       return profile;
     } catch (error) {
