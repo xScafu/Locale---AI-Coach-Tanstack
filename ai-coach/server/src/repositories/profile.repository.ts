@@ -1,6 +1,6 @@
 import { db } from "../db";
 import { pilots } from "../db/schema";
-import { and, eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 
 export async function createPilot(data: any) {
   await deactivatePilots();
@@ -13,6 +13,12 @@ export async function getPilot(id: string) {
   return result[0];
 }
 
+// Usata dalla nuova pagina Profilo per mostrare tutte le card piloti,
+// non solo quello attivo.
+export async function getAllPilots() {
+  return db.select().from(pilots).orderBy(desc(pilots.createdAt));
+}
+
 export async function getActivePilot() {
   const result = await db
     .select()
@@ -21,6 +27,19 @@ export async function getActivePilot() {
     .limit(1);
 
   return result[0] ?? null;
+}
+
+export type PilotUpdate = Partial<{
+  name: string;
+  level: string;
+  experience: string;
+  drivingStyle: string;
+}>;
+
+// Prima non esisteva alcun modo di modificare un pilota già creato:
+// l'unico form disponibile era di sola creazione.
+export async function updatePilot(id: string, data: PilotUpdate) {
+  await db.update(pilots).set(data).where(eq(pilots.id, id));
 }
 
 export async function deactivatePilots() {

@@ -15,6 +15,7 @@ import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as GarageRouteImport } from './routes/garage'
 import { Route as KnowledgeRouteImport } from './routes/knowledge'
 import { Route as ProfileRouteImport } from './routes/profile'
+import { Route as SessionRouteImport } from './routes/session'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as TelemetryRouteImport } from './routes/telemetry'
 import { Route as TelemteryRouteImport } from './routes/telemtery'
@@ -51,6 +52,11 @@ const KnowledgeRoute = KnowledgeRouteImport.update({
 const ProfileRoute = ProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SessionRoute = SessionRouteImport.update({
+  id: '/session',
+  path: '/session',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -96,6 +102,7 @@ export interface FileRoutesByFullPath {
   '/garage': typeof GarageRouteWithChildren
   '/knowledge': typeof KnowledgeRoute
   '/profile': typeof ProfileRoute
+  '/session': typeof SessionRoute
   '/settings': typeof SettingsRoute
   '/telemetry': typeof TelemetryRoute
   '/telemtery': typeof TelemteryRoute
@@ -110,6 +117,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof DashboardRoute
   '/knowledge': typeof KnowledgeRoute
   '/profile': typeof ProfileRoute
+  '/session': typeof SessionRoute
   '/settings': typeof SettingsRoute
   '/telemetry': typeof TelemetryRoute
   '/telemtery': typeof TelemteryRoute
@@ -126,6 +134,7 @@ export interface FileRoutesById {
   '/garage': typeof GarageRouteWithChildren
   '/knowledge': typeof KnowledgeRoute
   '/profile': typeof ProfileRoute
+  '/session': typeof SessionRoute
   '/settings': typeof SettingsRoute
   '/telemetry': typeof TelemetryRoute
   '/telemtery': typeof TelemteryRoute
@@ -143,6 +152,7 @@ export interface FileRouteTypes {
     | '/garage'
     | '/knowledge'
     | '/profile'
+    | '/session'
     | '/settings'
     | '/telemetry'
     | '/telemtery'
@@ -157,6 +167,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/knowledge'
     | '/profile'
+    | '/session'
     | '/settings'
     | '/telemetry'
     | '/telemtery'
@@ -172,6 +183,7 @@ export interface FileRouteTypes {
     | '/garage'
     | '/knowledge'
     | '/profile'
+    | '/session'
     | '/settings'
     | '/telemetry'
     | '/telemtery'
@@ -188,6 +200,7 @@ export interface RootRouteChildren {
   GarageRoute: typeof GarageRouteWithChildren
   KnowledgeRoute: typeof KnowledgeRoute
   ProfileRoute: typeof ProfileRoute
+  SessionRoute: typeof SessionRoute
   SettingsRoute: typeof SettingsRoute
   TelemetryRoute: typeof TelemetryRoute
   TelemteryRoute: typeof TelemteryRoute
@@ -237,6 +250,13 @@ declare module '@tanstack/react-router' {
       path: '/profile'
       fullPath: '/profile'
       preLoaderRoute: typeof ProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/session': {
+      id: '/session'
+      path: '/session'
+      fullPath: '/session'
+      preLoaderRoute: typeof SessionRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -311,6 +331,7 @@ const rootRouteChildren: RootRouteChildren = {
   GarageRoute: GarageRouteWithChildren,
   KnowledgeRoute: KnowledgeRoute,
   ProfileRoute: ProfileRoute,
+  SessionRoute: SessionRoute,
   SettingsRoute: SettingsRoute,
   TelemetryRoute: TelemetryRoute,
   TelemteryRoute: TelemteryRoute,
