@@ -75,6 +75,19 @@ routes/ → services/ → repositories/ → db/
    non Chat Completions. Modello, `max_output_tokens` e `temperature` vengono dalla
    tabella `settings`.
 
+**`temperature` non si passa ai modelli reasoning.** La famiglia `gpt-5` e gli `o1`/`o3`/`o4`
+rispondono `400 Unsupported parameter` se la ricevono, e il default del progetto è
+`gpt-5-mini`: il parametro va incluso solo quando `supportsTemperature(model)` è vero.
+Quel controllo è basato sui prefissi del nome e invecchia a ogni nuovo modello, perciò
+`createResponse` riprova una volta senza `temperature` se l'API la rifiuta comunque.
+Conseguenza per l'interfaccia: il campo "Temperature" in Impostazioni non ha alcun effetto
+finché il modello scelto è un reasoning.
+
+Sempre sui reasoning: il ragionamento interno consuma il budget di `max_output_tokens`
+(in una prova, 2176 token su 2278 erano `reasoning_tokens`). Per questo `askCoach`
+distingue il caso `status === "incomplete"` con `reason === "max_output_tokens"` e
+restituisce un messaggio dedicato invece di una risposta vuota.
+
 **Pattern "record attivo"**: pilots, cars e tracks hanno tutti `isActive`. Deve essere
 attivo un solo record per tabella — attivarne uno *deve* prima disattivare tutti gli
 altri (vedi `activateCar` / `deactivateCars` in `car.repository.ts`). È il meccanismo
