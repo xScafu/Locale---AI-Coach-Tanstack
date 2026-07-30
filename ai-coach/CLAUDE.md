@@ -119,17 +119,48 @@ L'upload passa da un `bodyLimit` dedicato di 200 MB in `index.ts`.
 - `services/*.api.ts` sono le funzioni `fetch`. Ognuna ridichiara
   `const API_URL = "http://localhost:3001"` — non c'è un client HTTP centralizzato né
   una variabile d'ambiente per l'URL dell'API.
-- Tailwind 4 tramite `@tailwindcss/vite`, entry CSS `styles/global.css`.
 - CORS lato server è fissato su `http://localhost:5173`: se cambi la porta di Vite,
-  aggiorna `server/src/index.ts`.
+  aggiorna `server/src/index.ts`. Per lo stesso motivo il dev server del client deve
+  restare sulla 5173.
+
+### UI — shadcn/ui + Tailwind 4
+
+- I componenti di base stanno in `components/ui/` e sono **codice del progetto**, non una
+  dipendenza: si modificano direttamente. `components.json` fissa preset `radix-nova`,
+  icone `lucide`, alias `@/`.
+- **Alias `@/` → `client/src/`**, dichiarato in `tsconfig.json`, `tsconfig.app.json` e
+  `vite.config.ts` (tutti e tre, altrimenti o TypeScript o Vite non risolve). Niente
+  `baseUrl`: è deprecato in TypeScript 6, `paths` da solo risolve rispetto al tsconfig.
+  Il codice più vecchio usa ancora import relativi; nei file che tocchi passa a `@/`.
+- **Temi**: `ThemeProvider` in `components/theme-provider.tsx` applica la classe `light`
+  o `dark` su `<html>` e la persiste in `localStorage`. Non usare `next-themes`: è un
+  pacchetto Next e questo è un progetto Vite. Se rigeneri `components/ui/sonner.tsx`
+  con la CLI, torna a importare `useTheme` da `next-themes` e va ricorretto a mano.
+- **Colori solo via token semantici** (`bg-background`, `text-muted-foreground`,
+  `bg-card`, `border-border`…), mai `bg-slate-900` o `text-gray-500` diretti: un colore
+  hardcoded non segue il cambio di tema. I token sono definiti in `styles/global.css`,
+  `:root` per il chiaro e `.dark` per lo scuro — vanno sempre aggiornati in coppia.
+- La **sidebar è scura in entrambi i temi**: usa i token `--sidebar-*`, che nel tema
+  chiaro sono volutamente scuri.
+- I `--chart-*` sono assegnati per canale di telemetria (1 freno, 2 gas, 3 velocità) e
+  vanno tenuti stabili tra le pagine, altrimenti lo stesso canale cambia colore da un
+  grafico all'altro.
+- `--font-mono` è impostato per tempi sul giro e valori di telemetria: cifre a larghezza
+  fissa, così i numeri non "ballano" mentre si aggiornano.
 
 ## Trappole note
 
 - **Codice morto nel client.** Convivono più versioni della stessa cosa: la chat viva è
   `features/chat/` (`ChatWindow`, `ChatInput`, `features/chat/hooks/useChat.ts`), mentre
-  `hooks/useChat.ts`, `stores/chat.store.ts`, `api/profile.ts`, `services/api.ts` (vuoto),
-  `pages/Chat.tsx`, `pages/Cars.tsx` e la rotta con refuso `routes/telemtery.tsx` non sono
-  importati da nessuna parte. Verifica sempre chi importa un file prima di modificarlo.
+  `stores/chat.store.ts`, `api/profile.ts`, `pages/Chat.tsx` e `pages/Cars.tsx` non sono
+  importati da nessuna parte. Verifica sempre chi importa un file prima di modificarlo:
+  attenzione che `features/chat/components/*` importa `../hooks/useChat`, cioè quello
+  dentro `features/chat/`, non uno omonimo altrove.
+- **Nomi di file con refusi**, da non "correggere" alla cieca perché gli import sono
+  coerenti con il refuso: `services/settings.ap.ts` (manca la `i` di `api`).
+- La dashboard mostra il **primo** pilota/auto/circuito, non quello attivo:
+  `dashboard.repository.ts` fa `.limit(1)` senza filtrare su `isActive`. Divergenza dal
+  resto dell'app, che passa sempre da `getActivePilot` / `getActiveCar`.
 - `server/.env.example` cita `DATABASE_URL`, ma non è letto da nessuna parte: il path del
   DB è hardcoded in `db/index.ts` e in `drizzle.config.ts`.
 - La tabella `settings` ha `autoSummaryEvery`, ma `memory.manager.ts` usa `20` hardcoded.
