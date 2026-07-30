@@ -4,7 +4,7 @@ import { useState } from "react";
 import { ChevronRight, Trash2 } from "lucide-react";
 
 import { activateCar, createCar, deleteCar, getCars } from "@/services/garage.api";
-import { usePilotStore } from "@/stores/pilot.store";
+import { useActivePilot } from "@/hooks/useActivePilot";
 import PageHeader from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,8 +26,10 @@ export const Route = createFileRoute("/garage/")({
 function GaragePage() {
   const queryClient = useQueryClient();
 
-  const pilotId = usePilotStore((state) => state.pilotId);
-  const pilotName = usePilotStore((state) => state.pilotName);
+  // pilotPending distingue "sto ancora chiedendo al server" da "non
+  // c'e' nessun pilota": senza, la pagina lampeggia "nessun pilota
+  // attivo" a ogni caricamento.
+  const { pilotId, pilotName, isPending: pilotPending } = useActivePilot();
 
   const [form, setForm] = useState({
     manufacturer: "",
@@ -107,9 +109,11 @@ function GaragePage() {
       <PageHeader
         title="Garage"
         description={
-          pilotId
-            ? `Pilota attivo: ${pilotName ?? pilotId}`
-            : "Nessun pilota attivo. Salva prima il profilo."
+          pilotPending
+            ? "Caricamento del pilota attivo..."
+            : pilotId
+              ? `Pilota attivo: ${pilotName ?? pilotId}`
+              : "Nessun pilota attivo. Salva prima il profilo."
         }
       />
 
@@ -189,13 +193,13 @@ function GaragePage() {
           </CardHeader>
 
           <CardContent className="space-y-3">
-            {!pilotId && (
+            {!pilotId && !pilotPending && (
               <p className="text-muted-foreground text-sm">
                 Salva prima un profilo pilota per vedere il garage.
               </p>
             )}
 
-            {pilotId && isPending && (
+            {(pilotPending || (pilotId && isPending)) && (
               <>
                 <Skeleton className="h-32 rounded-lg" />
                 <Skeleton className="h-32 rounded-lg" />

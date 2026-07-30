@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Pencil, Plus } from "lucide-react";
 
-import { usePilotStore } from "@/stores/pilot.store";
+import { ACTIVE_PILOT_KEY } from "@/hooks/useActivePilot";
 import {
   activatePilot,
   createPilot,
@@ -46,9 +46,6 @@ function pilotToForm(pilot: Pilot) {
 
 function ProfilePage() {
   const queryClient = useQueryClient();
-  const setPilot = usePilotStore((state) => state.setPilot);
-  const activePilotId = usePilotStore((state) => state.pilotId);
-
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -86,22 +83,14 @@ function ProfilePage() {
     try {
       if (editingId) {
         await updatePilot(editingId, form);
-
-        // Se stavo modificando il pilota attualmente attivo, aggiorna
-        // anche il nome mostrato altrove nell'app (es. Garage).
-        if (editingId === activePilotId) {
-          setPilot(editingId, form.name);
-        }
       } else {
-        const result = await createPilot(form);
-
-        // Un pilota appena creato diventa automaticamente attivo lato
-        // server (vedi createPilot -> deactivatePilots), quindi
-        // sincronizziamo subito anche lo store del client.
-        setPilot(result.id, form.name);
+        // Un pilota appena creato diventa attivo lato server, vedi
+        // createPilot -> deactivatePilots.
+        await createPilot(form);
       }
 
       await queryClient.invalidateQueries({ queryKey: ["pilots"] });
+      await queryClient.invalidateQueries({ queryKey: ACTIVE_PILOT_KEY });
       cancelForm();
     } finally {
       setSaving(false);
@@ -113,8 +102,8 @@ function ProfilePage() {
 
     try {
       await activatePilot(pilot.id);
-      setPilot(pilot.id, pilot.name);
       await queryClient.invalidateQueries({ queryKey: ["pilots"] });
+      await queryClient.invalidateQueries({ queryKey: ACTIVE_PILOT_KEY });
     } finally {
       setBusyId(null);
     }

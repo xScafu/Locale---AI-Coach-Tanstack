@@ -14,7 +14,7 @@ import {
   updateTrack,
   type Track,
 } from "@/services/track.api";
-import { usePilotStore } from "@/stores/pilot.store";
+import { useActivePilot } from "@/hooks/useActivePilot";
 import PageHeader from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -376,7 +376,10 @@ function TrackSheetCard({ track }: { track: Track }) {
 
 function TracksPage() {
   const queryClient = useQueryClient();
-  const pilotId = usePilotStore((state) => state.pilotId);
+  // pilotPending distingue "sto ancora chiedendo al server" da "non
+  // c'e' nessun pilota": senza, la pagina lampeggia "salva prima un
+  // profilo" a ogni caricamento.
+  const { pilotId, isPending: pilotPending } = useActivePilot();
 
   const [form, setForm] = useState({ name: "", country: "" });
   const [saving, setSaving] = useState(false);
@@ -483,13 +486,13 @@ function TracksPage() {
             </CardHeader>
 
             <CardContent className="space-y-3">
-              {!pilotId && (
+              {!pilotId && !pilotPending && (
                 <p className="text-muted-foreground text-sm">
                   Salva prima un profilo pilota.
                 </p>
               )}
 
-              {pilotId && isPending && (
+              {(pilotPending || (pilotId && isPending)) && (
                 <>
                   <Skeleton className="h-24 rounded-lg" />
                   <Skeleton className="h-24 rounded-lg" />

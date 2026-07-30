@@ -12,19 +12,17 @@ import {
 
 const profile = new Hono();
 
+// Il pilota attivo secondo il server: e' l'unica fonte di verita', il
+// client non lo tiene piu' in localStorage.
+//
+// Restituisce 200 con pilot: null quando non ce n'e' nessuno. Prima
+// rispondeva 404, ma "non hai ancora creato un pilota" e' uno stato
+// normale dell'app, non un errore: con il 404 ogni pagina avrebbe
+// dovuto distinguere un errore di rete da un database vuoto.
 profile.get("/current", async (c) => {
   const pilot = await getActivePilot();
 
-  if (!pilot) {
-    return c.json(
-      {
-        message: "Nessun pilota attivo",
-      },
-      404
-    );
-  }
-
-  return c.json(pilot);
+  return c.json({ pilot: pilot ?? null });
 });
 
 // Nuovo: elenco di tutti i piloti, per le card selezionabili in UI.

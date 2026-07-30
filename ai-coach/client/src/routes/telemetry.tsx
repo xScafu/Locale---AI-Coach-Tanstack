@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Trash2, Upload } from "lucide-react";
 
-import { usePilotStore } from "@/stores/pilot.store";
+import { useActivePilot } from "@/hooks/useActivePilot";
 import { getCars } from "@/services/garage.api";
 import {
   deleteTelemetryImport,
@@ -315,7 +315,7 @@ function LineChart({
 
 function Telemetry() {
   const queryClient = useQueryClient();
-  const pilotId = usePilotStore((state) => state.pilotId);
+  const { pilotId } = useActivePilot();
 
   const [carId, setCarId] = useState("");
   const [file, setFile] = useState<File | null>(null);

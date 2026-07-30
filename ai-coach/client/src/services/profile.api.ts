@@ -9,6 +9,16 @@ export type Pilot = {
   isActive?: boolean;
 };
 
+export async function getActivePilot() {
+  const response = await fetch(`${API_URL}/api/profile/current`);
+
+  if (!response.ok) {
+    throw new Error("Impossibile leggere il pilota attivo");
+  }
+
+  return response.json() as Promise<{ pilot: Pilot | null }>;
+}
+
 export async function getPilots() {
   const response = await fetch(`${API_URL}/api/profile`);
   return response.json() as Promise<{ items: Pilot[] }>;

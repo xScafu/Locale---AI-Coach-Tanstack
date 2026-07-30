@@ -142,9 +142,8 @@ L'ordine conta: senza pilota non si può creare nient'altro, perché `cars.pilot
 
 **Il `carId` scelto a mano nel form vince** sul metadato: è una correzione esplicita.
 
-Lato client `TelemetryUploader` (in dashboard) deve anche aggiornare `pilot.store`: il
-pilota attivo vive sia sul server (`isActive`) sia in `localStorage`, e se i due
-divergono Garage e Circuiti filtrano per il pilota sbagliato e appaiono vuoti.
+Lato client `TelemetryUploader` (in dashboard) si limita a invalidare le query: il pilota
+attivo arriva dal server, quindi non c'è nessuna copia locale da tenere allineata.
 
 ### Profilo del tracciato
 
@@ -211,8 +210,15 @@ univoco**, più segmenti possono condividere la stessa etichetta.
   plugin Vite. `routeTree.gen.ts` è generato — non modificarlo a mano.
 - Molte pagine hanno tutta la logica dentro il file di rotta (es. `routes/telemetry.tsx`
   contiene anche la proiezione GPS→SVG della mappa). Solo `dashboard` delega a `pages/`.
-- **TanStack Query** per i dati server, **Zustand** per lo stato locale
-  (`stores/pilot.store.ts`, `stores/settings.store.ts`).
+- **TanStack Query** per i dati server, **Zustand** per lo stato puramente locale
+  (`stores/settings.store.ts`).
+- **Il pilota attivo è stato server**, non client: `hooks/useActivePilot.ts` legge
+  `GET /api/profile/current`. Non reintrodurre una copia in `localStorage` — c'era, e
+  divergeva dalla colonna `isActive`: bastava aprire l'app da un altro browser perché
+  Garage, Circuiti e Telemetria filtrassero per un pilota diverso da quello attivo e
+  apparissero vuoti. Chi cambia il pilota attivo invalida `ACTIVE_PILOT_KEY`.
+  Le pagine devono distinguere `isPending` da "nessun pilota", altrimenti lampeggiano
+  "salva prima un profilo" a ogni caricamento.
 - `services/*.api.ts` sono le funzioni `fetch`. Ognuna ridichiara
   `const API_URL = "http://localhost:3001"` — non c'è un client HTTP centralizzato né
   una variabile d'ambiente per l'URL dell'API.
@@ -261,10 +267,9 @@ univoco**, più segmenti possono condividere la stessa etichetta.
   dentro `features/chat/`, non uno omonimo altrove.
 - **Nomi di file con refusi**, da non "correggere" alla cieca perché gli import sono
   coerenti con il refuso: `services/settings.ap.ts` (manca la `i` di `api`).
-- Il pilota attivo esiste in **due posti che possono divergere**: `isActive` sul DB e
-  `pilotId` in `stores/pilot.store.ts` (solo `localStorage`). L'uploader li tiene
-  allineati, ma su un browser che non ha mai importato nulla Garage/Circuiti/Telemetria
-  filtrano per un pilota diverso da quello attivo e sembrano vuoti.
+- L'auto e il circuito attivi restano **solo** sul server (`isActive`), come il pilota:
+  non aggiungere copie lato client, è la duplicazione che aveva già creato problemi con
+  `pilot.store`.
 - **DuckDB restituisce BigInt** da `COUNT(*)` e simili, e `JSON.stringify` sui BigInt
   lancia. `inspectDuckDbFile` e `runReadOnlyQuery` convertono già con `Number(...)`:
   fallo anche in ogni nuova query che finisce serializzata, o l'import torna "error".

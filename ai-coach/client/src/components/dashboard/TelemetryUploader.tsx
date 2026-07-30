@@ -14,7 +14,6 @@ import {
   type ImportSync,
   type SyncEntity,
 } from "@/services/telemetry.api";
-import { usePilotStore } from "@/stores/pilot.store";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -66,7 +65,6 @@ function SyncRow({ label, entity }: { label: string; entity: SyncEntity | null }
 
 export default function TelemetryUploader() {
   const queryClient = useQueryClient();
-  const setPilot = usePilotStore((state) => state.setPilot);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -88,14 +86,9 @@ export default function TelemetryUploader() {
 
       setResult(sync);
 
-      // Il pilota attivo vive anche nel client (localStorage): senza
-      // questo allineamento Garage e Circuiti continuerebbero a
-      // guardare il pilota precedente, o nessuno.
-      if (sync?.pilot) {
-        setPilot(sync.pilot.id, sync.pilot.name);
-      }
-
-      // Tutto puo' essere cambiato: pilota, auto, circuito, profilo.
+      // Tutto puo' essere cambiato: pilota, auto e circuito attivi,
+      // profilo del tracciato, elenco degli import. Il pilota attivo
+      // arriva dal server, quindi basta invalidare.
       await queryClient.invalidateQueries();
 
       toast.success(`${file.name} importato`);
