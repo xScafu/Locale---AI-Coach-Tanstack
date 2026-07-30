@@ -18,6 +18,7 @@ import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as SessionsRouteImport } from './routes/sessions'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as TelemetryRouteImport } from './routes/telemetry'
+import { Route as TelemteryRouteImport } from './routes/telemtery'
 import { Route as TracksRouteImport } from './routes/tracks'
 import { Route as VoiceRouteImport } from './routes/voice'
 import { Route as GarageIndexRouteImport } from './routes/garage.index'
@@ -68,6 +69,11 @@ const TelemetryRoute = TelemetryRouteImport.update({
   path: '/telemetry',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TelemteryRoute = TelemteryRouteImport.update({
+  id: '/telemtery',
+  path: '/telemtery',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TracksRoute = TracksRouteImport.update({
   id: '/tracks',
   path: '/tracks',
@@ -99,6 +105,7 @@ export interface FileRoutesByFullPath {
   '/sessions': typeof SessionsRoute
   '/settings': typeof SettingsRoute
   '/telemetry': typeof TelemetryRoute
+  '/telemtery': typeof TelemteryRoute
   '/tracks': typeof TracksRoute
   '/voice': typeof VoiceRoute
   '/garage/$carId': typeof GarageCarIdRoute
@@ -113,6 +120,7 @@ export interface FileRoutesByTo {
   '/sessions': typeof SessionsRoute
   '/settings': typeof SettingsRoute
   '/telemetry': typeof TelemetryRoute
+  '/telemtery': typeof TelemteryRoute
   '/tracks': typeof TracksRoute
   '/voice': typeof VoiceRoute
   '/garage/$carId': typeof GarageCarIdRoute
@@ -129,6 +137,7 @@ export interface FileRoutesById {
   '/sessions': typeof SessionsRoute
   '/settings': typeof SettingsRoute
   '/telemetry': typeof TelemetryRoute
+  '/telemtery': typeof TelemteryRoute
   '/tracks': typeof TracksRoute
   '/voice': typeof VoiceRoute
   '/garage/$carId': typeof GarageCarIdRoute
@@ -146,6 +155,7 @@ export interface FileRouteTypes {
     | '/sessions'
     | '/settings'
     | '/telemetry'
+    | '/telemtery'
     | '/tracks'
     | '/voice'
     | '/garage/$carId'
@@ -160,6 +170,7 @@ export interface FileRouteTypes {
     | '/sessions'
     | '/settings'
     | '/telemetry'
+    | '/telemtery'
     | '/tracks'
     | '/voice'
     | '/garage/$carId'
@@ -175,6 +186,7 @@ export interface FileRouteTypes {
     | '/sessions'
     | '/settings'
     | '/telemetry'
+    | '/telemtery'
     | '/tracks'
     | '/voice'
     | '/garage/$carId'
@@ -191,6 +203,7 @@ export interface RootRouteChildren {
   SessionsRoute: typeof SessionsRoute
   SettingsRoute: typeof SettingsRoute
   TelemetryRoute: typeof TelemetryRoute
+  TelemteryRoute: typeof TelemteryRoute
   TracksRoute: typeof TracksRoute
   VoiceRoute: typeof VoiceRoute
 }
@@ -260,6 +273,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TelemetryRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/telemtery': {
+      id: '/telemtery'
+      path: '/telemtery'
+      fullPath: '/telemtery'
+      preLoaderRoute: typeof TelemteryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/tracks': {
       id: '/tracks'
       path: '/tracks'
@@ -314,6 +334,7 @@ const rootRouteChildren: RootRouteChildren = {
   SessionsRoute: SessionsRoute,
   SettingsRoute: SettingsRoute,
   TelemetryRoute: TelemetryRoute,
+  TelemteryRoute: TelemteryRoute,
   TracksRoute: TracksRoute,
   VoiceRoute: VoiceRoute,
 }
