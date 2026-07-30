@@ -1,8 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-
-import { importSetupFile } from "../services/garage.api.ts";
+import { ArrowLeft, Pencil, Trash2, Upload } from "lucide-react";
 
 import {
   createProblem,
@@ -12,12 +11,24 @@ import {
   getCar,
   getProblems,
   getSetups,
+  importSetupFile,
   updateCar,
   updateProblem,
   updateSetup,
   type CarProblem,
   type Setup,
-} from "../services/garage.api.ts";
+} from "@/services/garage.api";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 
 const emptySetupForm = {
   name: "Setup Base",
@@ -35,6 +46,25 @@ const emptySetupForm = {
   diffPreload: "",
   notes: "",
 };
+
+type SetupFormKey = keyof Omit<typeof emptySetupForm, "name" | "notes">;
+
+// I 13 campi numerici del setup differiscono solo per chiave ed
+// etichetta: elencarli come dati evita 13 blocchi di JSX identici.
+const SETUP_FIELDS: { key: SetupFormKey; label: string }[] = [
+  { key: "brakeBias", label: "Brake bias" },
+  { key: "frontRideHeight", label: "Altezza ant." },
+  { key: "rearRideHeight", label: "Altezza post." },
+  { key: "frontCamber", label: "Camber ant." },
+  { key: "rearCamber", label: "Camber post." },
+  { key: "frontToe", label: "Convergenza ant." },
+  { key: "rearToe", label: "Convergenza post." },
+  { key: "frontARB", label: "Barra ant." },
+  { key: "rearARB", label: "Barra post." },
+  { key: "frontSpring", label: "Molla ant." },
+  { key: "rearSpring", label: "Molla post." },
+  { key: "diffPreload", label: "Precarico diff." },
+];
 
 const emptyProblemForm = {
   phase: "Entry",
@@ -83,9 +113,6 @@ function GarageCarDetailPage() {
     queryKey: ["car", carId],
     queryFn: () => getCar(carId),
   });
-
-  console.log("Car ID:", carId);
-  console.log("Car data:", carQuery.data);
 
   const setupsQuery = useQuery({
     queryKey: ["setups", carId],
@@ -143,6 +170,12 @@ function GarageCarDetailPage() {
   const [savingSetup, setSavingSetup] = useState(false);
   const [busySetupId, setBusySetupId] = useState<string | null>(null);
 
+  const [importing, setImporting] = useState(false);
+  const [importPreview, setImportPreview] = useState<Record<
+    string,
+    string
+  > | null>(null);
+
   async function handleImportSvm(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -185,12 +218,6 @@ function GarageCarDetailPage() {
       setImporting(false);
     }
   }
-
-  const [importing, setImporting] = useState(false);
-  const [importPreview, setImportPreview] = useState<Record<
-    string,
-    string
-  > | null>(null);
 
   function startEditSetup(setup: Setup) {
     setEditingSetupId(setup.id);
@@ -318,15 +345,24 @@ function GarageCarDetailPage() {
   }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6">
       <div>
-        <Link to="/garage" className="text-sm underline">
-          ← Torna al garage
-        </Link>
+        <Button asChild variant="ghost" size="sm" className="-ml-2">
+          <Link to="/garage">
+            <ArrowLeft className="size-4" />
+            Torna al garage
+          </Link>
+        </Button>
 
-        <h1 className="mt-3 text-2xl font-bold">{car?.name ?? "Auto"}</h1>
+        {carQuery.isPending ? (
+          <Skeleton className="mt-3 h-8 w-56" />
+        ) : (
+          <h1 className="mt-3 text-2xl font-semibold tracking-tight">
+            {car?.name ?? "Auto"}
+          </h1>
+        )}
 
-        <p className="text-sm text-gray-500">
+        <p className="text-muted-foreground mt-1 text-sm">
           {car?.manufacturer ?? "Senza marca"} ·{" "}
           {car?.category ?? "Senza categoria"} ·{" "}
           {car?.simulator ?? "Senza simulatore"}
@@ -334,407 +370,442 @@ function GarageCarDetailPage() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-lg border p-4">
-          <h2 className="mb-4 text-lg font-semibold">Setup</h2>
-          <div className="mb-4 rounded border border-dashed p-3">
-            <label className="text-sm font-medium">
-              Importa da file .svm (LMU)
-            </label>
-            <input
-              type="file"
-              accept=".svm"
-              className="mt-2 block text-sm"
-              disabled={importing}
-              onChange={handleImportSvm}
-            />
-            <p className="mt-1 text-xs text-gray-500">
-              I valori vengono precompilati come suggerimento: verificali prima
-              di salvare, il parser è "best effort" e non conosce con certezza
-              il formato esatto di LMU.
-            </p>
+        <Card className="h-fit">
+          <CardHeader>
+            <CardTitle>
+              {editingSetupId ? "Modifica setup" : "Nuovo setup"}
+            </CardTitle>
+          </CardHeader>
 
-            {importPreview && (
-              <details className="mt-2 text-xs">
-                <summary className="cursor-pointer text-blue-600">
-                  Vedi tutti i campi trovati nel file (
-                  {Object.keys(importPreview).length})
-                </summary>
-                <div className="mt-2 max-h-48 overflow-y-auto rounded bg-gray-50 p-2">
-                  {Object.entries(importPreview).map(([key, value]) => (
-                    <div key={key} className="flex justify-between gap-3">
-                      <span className="text-gray-500">{key}</span>
-                      <span>{value}</span>
-                    </div>
-                  ))}
-                </div>
-              </details>
-            )}
-          </div>
+          <CardContent className="space-y-5">
+            <div className="rounded-lg border border-dashed p-3">
+              <Label htmlFor="svm" className="text-sm font-medium">
+                <Upload className="size-4" />
+                Importa da file .svm (LMU)
+              </Label>
 
-          <div className="grid gap-3 md:grid-cols-2">
-            <input
-              className="rounded border p-2"
-              placeholder="Nome setup"
-              value={setupForm.name}
-              onChange={(e) =>
-                setSetupForm({ ...setupForm, name: e.target.value })
-              }
-            />
-            <input
-              className="rounded border p-2"
-              placeholder="Brake Bias"
-              value={setupForm.brakeBias}
-              onChange={(e) =>
-                setSetupForm({ ...setupForm, brakeBias: e.target.value })
-              }
-            />
-            <input
-              className="rounded border p-2"
-              placeholder="Front Ride Height"
-              value={setupForm.frontRideHeight}
-              onChange={(e) =>
-                setSetupForm({ ...setupForm, frontRideHeight: e.target.value })
-              }
-            />
-            <input
-              className="rounded border p-2"
-              placeholder="Rear Ride Height"
-              value={setupForm.rearRideHeight}
-              onChange={(e) =>
-                setSetupForm({ ...setupForm, rearRideHeight: e.target.value })
-              }
-            />
-            <input
-              className="rounded border p-2"
-              placeholder="Front Camber"
-              value={setupForm.frontCamber}
-              onChange={(e) =>
-                setSetupForm({ ...setupForm, frontCamber: e.target.value })
-              }
-            />
-            <input
-              className="rounded border p-2"
-              placeholder="Rear Camber"
-              value={setupForm.rearCamber}
-              onChange={(e) =>
-                setSetupForm({ ...setupForm, rearCamber: e.target.value })
-              }
-            />
-            <input
-              className="rounded border p-2"
-              placeholder="Front Toe"
-              value={setupForm.frontToe}
-              onChange={(e) =>
-                setSetupForm({ ...setupForm, frontToe: e.target.value })
-              }
-            />
-            <input
-              className="rounded border p-2"
-              placeholder="Rear Toe"
-              value={setupForm.rearToe}
-              onChange={(e) =>
-                setSetupForm({ ...setupForm, rearToe: e.target.value })
-              }
-            />
-            <input
-              className="rounded border p-2"
-              placeholder="Front ARB"
-              value={setupForm.frontARB}
-              onChange={(e) =>
-                setSetupForm({ ...setupForm, frontARB: e.target.value })
-              }
-            />
-            <input
-              className="rounded border p-2"
-              placeholder="Rear ARB"
-              value={setupForm.rearARB}
-              onChange={(e) =>
-                setSetupForm({ ...setupForm, rearARB: e.target.value })
-              }
-            />
-            <input
-              className="rounded border p-2"
-              placeholder="Front Spring"
-              value={setupForm.frontSpring}
-              onChange={(e) =>
-                setSetupForm({ ...setupForm, frontSpring: e.target.value })
-              }
-            />
-            <input
-              className="rounded border p-2"
-              placeholder="Rear Spring"
-              value={setupForm.rearSpring}
-              onChange={(e) =>
-                setSetupForm({ ...setupForm, rearSpring: e.target.value })
-              }
-            />
-            <input
-              className="rounded border p-2"
-              placeholder="Diff Preload"
-              value={setupForm.diffPreload}
-              onChange={(e) =>
-                setSetupForm({ ...setupForm, diffPreload: e.target.value })
-              }
-            />
-          </div>
-
-          <textarea
-            className="mt-3 w-full rounded border p-2"
-            placeholder="Note setup"
-            value={setupForm.notes}
-            onChange={(e) =>
-              setSetupForm({ ...setupForm, notes: e.target.value })
-            }
-          />
-
-          <div className="mt-3 flex gap-3">
-            <button
-              className="rounded border px-4 py-2 disabled:opacity-50"
-              onClick={saveSetup}
-              disabled={savingSetup}
-            >
-              {savingSetup
-                ? "Salvataggio..."
-                : editingSetupId
-                  ? "Aggiorna setup"
-                  : "Salva setup"}
-            </button>
-
-            {editingSetupId && (
-              <button
-                className="rounded border px-4 py-2"
-                onClick={cancelEditSetup}
-                disabled={savingSetup}
-              >
-                Annulla
-              </button>
-            )}
-          </div>
-
-          <div className="mt-6 space-y-3">
-            <h3 className="font-semibold">Setup salvati</h3>
-            {setupsQuery.data?.items?.map((setup) => (
-              <div key={setup.id} className="rounded border p-3">
-                <div className="font-medium">{setup.name}</div>
-                <div className="text-sm text-gray-500">
-                  BB {setup.brakeBias ?? "-"} · Camber F{" "}
-                  {setup.frontCamber ?? "-"} / R {setup.rearCamber ?? "-"}
-                </div>
-                {setup.notes && (
-                  <div className="mt-2 text-sm">{setup.notes}</div>
-                )}
-
-                <div className="mt-3 flex gap-3">
-                  <button
-                    className="text-sm text-blue-600 underline"
-                    onClick={() => startEditSetup(setup)}
-                  >
-                    Modifica
-                  </button>
-                  <button
-                    className="text-sm text-red-600 underline disabled:opacity-50"
-                    disabled={busySetupId === setup.id}
-                    onClick={() => removeSetup(setup.id)}
-                  >
-                    Elimina
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          <div className="rounded-lg border p-4">
-            <h2 className="mb-4 text-lg font-semibold">Problemi ricorrenti</h2>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <input
-                className="rounded border p-2"
-                placeholder="Phase"
-                value={problemForm.phase}
-                onChange={(e) =>
-                  setProblemForm({ ...problemForm, phase: e.target.value })
-                }
+              <Input
+                id="svm"
+                type="file"
+                accept=".svm"
+                className="mt-2 cursor-pointer"
+                disabled={importing}
+                onChange={handleImportSvm}
               />
-              <input
-                className="rounded border p-2"
-                placeholder="Problem"
-                value={problemForm.problem}
-                onChange={(e) =>
-                  setProblemForm({ ...problemForm, problem: e.target.value })
-                }
-              />
-              <input
-                className="rounded border p-2"
-                placeholder="Severity"
-                value={problemForm.severity}
-                onChange={(e) =>
-                  setProblemForm({ ...problemForm, severity: e.target.value })
-                }
-              />
-            </div>
 
-            <textarea
-              className="mt-3 w-full rounded border p-2"
-              placeholder="Note problema"
-              value={problemForm.notes}
-              onChange={(e) =>
-                setProblemForm({ ...problemForm, notes: e.target.value })
-              }
-            />
+              <p className="text-muted-foreground mt-2 text-xs">
+                I valori vengono precompilati come suggerimento: verificali
+                prima di salvare, il parser è "best effort" e non conosce con
+                certezza il formato esatto di LMU.
+              </p>
 
-            <div className="mt-3 flex gap-3">
-              <button
-                className="rounded border px-4 py-2 disabled:opacity-50"
-                onClick={saveProblem}
-                disabled={savingProblem}
-              >
-                {savingProblem
-                  ? "Salvataggio..."
-                  : editingProblemId
-                    ? "Aggiorna problema"
-                    : "Salva problema"}
-              </button>
+              {importPreview && (
+                <details className="mt-2 text-xs">
+                  <summary className="text-primary cursor-pointer">
+                    Vedi tutti i campi trovati nel file (
+                    {Object.keys(importPreview).length})
+                  </summary>
 
-              {editingProblemId && (
-                <button
-                  className="rounded border px-4 py-2"
-                  onClick={cancelEditProblem}
-                  disabled={savingProblem}
-                >
-                  Annulla
-                </button>
+                  <div className="bg-muted mt-2 max-h-48 overflow-y-auto rounded p-2">
+                    {Object.entries(importPreview).map(([key, value]) => (
+                      <div key={key} className="flex justify-between gap-3">
+                        <span className="text-muted-foreground">{key}</span>
+                        <span className="font-mono">{value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </details>
               )}
             </div>
 
-            <div className="mt-6 space-y-3">
-              {problemsQuery.data?.items?.map((problem) => (
-                <div key={problem.id} className="rounded border p-3">
-                  <div className="font-medium">
-                    {problem.phase} · {problem.problem}
+            <div className="space-y-2">
+              <Label htmlFor="setup-name">Nome setup</Label>
+              <Input
+                id="setup-name"
+                value={setupForm.name}
+                onChange={(e) =>
+                  setSetupForm({ ...setupForm, name: e.target.value })
+                }
+              />
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              {SETUP_FIELDS.map((field) => (
+                <div key={field.key} className="space-y-1.5">
+                  <Label htmlFor={`setup-${field.key}`} className="text-xs">
+                    {field.label}
+                  </Label>
+                  <Input
+                    id={`setup-${field.key}`}
+                    inputMode="decimal"
+                    className="font-mono"
+                    value={setupForm[field.key]}
+                    onChange={(e) =>
+                      setSetupForm({
+                        ...setupForm,
+                        [field.key]: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="setup-notes">Note setup</Label>
+              <Textarea
+                id="setup-notes"
+                rows={3}
+                value={setupForm.notes}
+                onChange={(e) =>
+                  setSetupForm({ ...setupForm, notes: e.target.value })
+                }
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <Button onClick={saveSetup} disabled={savingSetup}>
+                {savingSetup
+                  ? "Salvataggio..."
+                  : editingSetupId
+                    ? "Aggiorna setup"
+                    : "Salva setup"}
+              </Button>
+
+              {editingSetupId && (
+                <Button
+                  variant="ghost"
+                  onClick={cancelEditSetup}
+                  disabled={savingSetup}
+                >
+                  Annulla
+                </Button>
+              )}
+            </div>
+
+            <div className="space-y-3 border-t pt-5">
+              <h3 className="text-sm font-medium">Setup salvati</h3>
+
+              {setupsQuery.isPending && <Skeleton className="h-24 rounded-lg" />}
+
+              {!setupsQuery.isPending &&
+                setupsQuery.data?.items?.length === 0 && (
+                  <p className="text-muted-foreground text-sm">
+                    Nessun setup salvato per quest'auto.
+                  </p>
+                )}
+
+              {setupsQuery.data?.items?.map((setup) => (
+                <div key={setup.id} className="rounded-lg border p-3">
+                  <div className="truncate font-medium">{setup.name}</div>
+
+                  <div className="text-muted-foreground mt-0.5 font-mono text-sm">
+                    BB {setup.brakeBias ?? "-"} · Camber F{" "}
+                    {setup.frontCamber ?? "-"} / R {setup.rearCamber ?? "-"}
                   </div>
-                  <div className="text-sm text-gray-500">
-                    Severità {problem.severity ?? "-"}
-                  </div>
-                  {problem.notes && (
-                    <div className="mt-2 text-sm">{problem.notes}</div>
+
+                  {setup.notes && (
+                    <p className="mt-2 text-sm leading-relaxed">
+                      {setup.notes}
+                    </p>
                   )}
 
-                  <div className="mt-3 flex gap-3">
-                    <button
-                      className="text-sm text-blue-600 underline"
-                      onClick={() => startEditProblem(problem)}
+                  <div className="mt-3 flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => startEditSetup(setup)}
                     >
+                      <Pencil className="size-3.5" />
                       Modifica
-                    </button>
-                    <button
-                      className="text-sm text-red-600 underline disabled:opacity-50"
-                      disabled={busyProblemId === problem.id}
-                      onClick={() => removeProblem(problem.id)}
+                    </Button>
+
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive hover:text-destructive"
+                      disabled={busySetupId === setup.id}
+                      onClick={() => removeSetup(setup.id)}
                     >
+                      <Trash2 className="size-3.5" />
                       Elimina
-                    </button>
+                    </Button>
                   </div>
                 </div>
               ))}
             </div>
-          </div>
+          </CardContent>
+        </Card>
 
-          <div className="rounded-lg border p-4">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Dettagli auto</h2>
-              {car && !carForm && (
-                <button
-                  className="text-sm text-blue-600 underline"
-                  onClick={startEditCar}
-                >
-                  Modifica
-                </button>
-              )}
-            </div>
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Problemi ricorrenti</CardTitle>
+            </CardHeader>
 
-            {carQuery.isPending && <p>Caricamento...</p>}
+            <CardContent className="space-y-5">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="problem-phase" className="text-xs">
+                    Fase
+                  </Label>
+                  <Input
+                    id="problem-phase"
+                    placeholder="Entry"
+                    value={problemForm.phase}
+                    onChange={(e) =>
+                      setProblemForm({ ...problemForm, phase: e.target.value })
+                    }
+                  />
+                </div>
 
-            {car && !carForm && (
-              <div className="space-y-2 text-sm">
-                <div>
-                  <strong>Marca:</strong> {car.manufacturer ?? "-"}
+                <div className="space-y-1.5">
+                  <Label htmlFor="problem-what" className="text-xs">
+                    Problema
+                  </Label>
+                  <Input
+                    id="problem-what"
+                    placeholder="Understeer"
+                    value={problemForm.problem}
+                    onChange={(e) =>
+                      setProblemForm({
+                        ...problemForm,
+                        problem: e.target.value,
+                      })
+                    }
+                  />
                 </div>
-                <div>
-                  <strong>Categoria:</strong> {car.category ?? "-"}
-                </div>
-                <div>
-                  <strong>Simulatore:</strong> {car.simulator ?? "-"}
-                </div>
-                <div>
-                  <strong>Note:</strong> {car.notes ?? "-"}
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="problem-severity" className="text-xs">
+                    Gravità
+                  </Label>
+                  <Input
+                    id="problem-severity"
+                    inputMode="numeric"
+                    className="font-mono"
+                    value={problemForm.severity}
+                    onChange={(e) =>
+                      setProblemForm({
+                        ...problemForm,
+                        severity: e.target.value,
+                      })
+                    }
+                  />
                 </div>
               </div>
-            )}
 
-            {carForm && (
-              <div className="space-y-3">
-                <input
-                  className="w-full rounded border p-2"
-                  placeholder="Marca"
-                  value={carForm.manufacturer}
+              <div className="space-y-2">
+                <Label htmlFor="problem-notes">Note problema</Label>
+                <Textarea
+                  id="problem-notes"
+                  rows={3}
+                  value={problemForm.notes}
                   onChange={(e) =>
-                    setCarForm({ ...carForm, manufacturer: e.target.value })
+                    setProblemForm({ ...problemForm, notes: e.target.value })
                   }
                 />
-                <input
-                  className="w-full rounded border p-2"
-                  placeholder="Nome auto"
-                  value={carForm.name}
-                  onChange={(e) =>
-                    setCarForm({ ...carForm, name: e.target.value })
-                  }
-                />
-                <input
-                  className="w-full rounded border p-2"
-                  placeholder="Simulatore"
-                  value={carForm.simulator}
-                  onChange={(e) =>
-                    setCarForm({ ...carForm, simulator: e.target.value })
-                  }
-                />
-                <input
-                  className="w-full rounded border p-2"
-                  placeholder="Categoria"
-                  value={carForm.category}
-                  onChange={(e) =>
-                    setCarForm({ ...carForm, category: e.target.value })
-                  }
-                />
-                <textarea
-                  className="w-full rounded border p-2"
-                  placeholder="Note"
-                  value={carForm.notes}
-                  onChange={(e) =>
-                    setCarForm({ ...carForm, notes: e.target.value })
-                  }
-                />
+              </div>
 
-                <div className="flex gap-3">
-                  <button
-                    className="rounded border px-4 py-2 disabled:opacity-50"
-                    onClick={saveCar}
-                    disabled={savingCar}
-                  >
-                    {savingCar ? "Salvataggio..." : "Salva"}
-                  </button>
-                  <button
-                    className="rounded border px-4 py-2"
-                    onClick={() => setCarForm(null)}
-                    disabled={savingCar}
+              <div className="flex gap-3">
+                <Button onClick={saveProblem} disabled={savingProblem}>
+                  {savingProblem
+                    ? "Salvataggio..."
+                    : editingProblemId
+                      ? "Aggiorna problema"
+                      : "Salva problema"}
+                </Button>
+
+                {editingProblemId && (
+                  <Button
+                    variant="ghost"
+                    onClick={cancelEditProblem}
+                    disabled={savingProblem}
                   >
                     Annulla
-                  </button>
-                </div>
+                  </Button>
+                )}
               </div>
-            )}
-          </div>
+
+              <div className="space-y-3 border-t pt-5">
+                {problemsQuery.isPending && (
+                  <Skeleton className="h-20 rounded-lg" />
+                )}
+
+                {!problemsQuery.isPending &&
+                  problemsQuery.data?.items?.length === 0 && (
+                    <p className="text-muted-foreground text-sm">
+                      Nessun problema registrato.
+                    </p>
+                  )}
+
+                {problemsQuery.data?.items?.map((problem) => (
+                  <div key={problem.id} className="rounded-lg border p-3">
+                    <div className="font-medium">
+                      {problem.phase} · {problem.problem}
+                    </div>
+
+                    <div className="text-muted-foreground mt-0.5 text-sm">
+                      Gravità {problem.severity ?? "-"}
+                    </div>
+
+                    {problem.notes && (
+                      <p className="mt-2 text-sm leading-relaxed">
+                        {problem.notes}
+                      </p>
+                    )}
+
+                    <div className="mt-3 flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => startEditProblem(problem)}
+                      >
+                        <Pencil className="size-3.5" />
+                        Modifica
+                      </Button>
+
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive hover:text-destructive"
+                        disabled={busyProblemId === problem.id}
+                        onClick={() => removeProblem(problem.id)}
+                      >
+                        <Trash2 className="size-3.5" />
+                        Elimina
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex-row items-center justify-between">
+              <CardTitle>Dettagli auto</CardTitle>
+
+              {car && !carForm && (
+                <Button variant="outline" size="sm" onClick={startEditCar}>
+                  <Pencil className="size-3.5" />
+                  Modifica
+                </Button>
+              )}
+            </CardHeader>
+
+            <CardContent>
+              {carQuery.isPending && <Skeleton className="h-28 rounded-lg" />}
+
+              {car && !carForm && (
+                <dl className="space-y-2 text-sm">
+                  <div className="flex gap-2">
+                    <dt className="text-muted-foreground w-28 shrink-0">
+                      Marca
+                    </dt>
+                    <dd>{car.manufacturer ?? "-"}</dd>
+                  </div>
+                  <div className="flex gap-2">
+                    <dt className="text-muted-foreground w-28 shrink-0">
+                      Categoria
+                    </dt>
+                    <dd>{car.category ?? "-"}</dd>
+                  </div>
+                  <div className="flex gap-2">
+                    <dt className="text-muted-foreground w-28 shrink-0">
+                      Simulatore
+                    </dt>
+                    <dd>{car.simulator ?? "-"}</dd>
+                  </div>
+                  <div className="flex gap-2">
+                    <dt className="text-muted-foreground w-28 shrink-0">
+                      Note
+                    </dt>
+                    <dd className="whitespace-pre-wrap">{car.notes ?? "-"}</dd>
+                  </div>
+                </dl>
+              )}
+
+              {carForm && (
+                <div className="space-y-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-manufacturer">Marca</Label>
+                      <Input
+                        id="edit-manufacturer"
+                        value={carForm.manufacturer}
+                        onChange={(e) =>
+                          setCarForm({
+                            ...carForm,
+                            manufacturer: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-name">Nome auto</Label>
+                      <Input
+                        id="edit-name"
+                        value={carForm.name}
+                        onChange={(e) =>
+                          setCarForm({ ...carForm, name: e.target.value })
+                        }
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-simulator">Simulatore</Label>
+                      <Input
+                        id="edit-simulator"
+                        value={carForm.simulator}
+                        onChange={(e) =>
+                          setCarForm({ ...carForm, simulator: e.target.value })
+                        }
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-category">Categoria</Label>
+                      <Input
+                        id="edit-category"
+                        value={carForm.category}
+                        onChange={(e) =>
+                          setCarForm({ ...carForm, category: e.target.value })
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-notes">Note</Label>
+                    <Textarea
+                      id="edit-notes"
+                      rows={3}
+                      value={carForm.notes}
+                      onChange={(e) =>
+                        setCarForm({ ...carForm, notes: e.target.value })
+                      }
+                    />
+                  </div>
+
+                  <div className="flex gap-3">
+                    <Button onClick={saveCar} disabled={savingCar}>
+                      {savingCar ? "Salvataggio..." : "Salva"}
+                    </Button>
+
+                    <Button
+                      variant="ghost"
+                      onClick={() => setCarForm(null)}
+                      disabled={savingCar}
+                    >
+                      Annulla
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>

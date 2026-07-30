@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { Pencil, Search, Trash2 } from "lucide-react";
 
 import {
   createKnowledgeEntry,
@@ -8,7 +9,27 @@ import {
   getKnowledgeEntries,
   updateKnowledgeEntry,
   type KnowledgeEntry,
-} from "../services/knowledge.api";
+} from "@/services/knowledge.api";
+import PageHeader from "@/components/layout/PageHeader";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 
 export const Route = createFileRoute("/knowledge")({
   component: KnowledgePage,
@@ -98,137 +119,173 @@ function KnowledgePage() {
   }
 
   return (
-    <div className="space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-bold">Knowledge Base</h1>
-        <p className="text-sm text-gray-500">
-          Voci che il coach consulta automaticamente in base al messaggio
-          dell'utente per dare consigli più mirati.
-        </p>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Knowledge Base"
+        description="Voci che il coach consulta automaticamente in base al messaggio dell'utente per dare consigli più mirati."
+      />
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-lg border p-4">
-          <h2 className="mb-4 text-lg font-semibold">
-            {editingId ? "Modifica voce" : "Nuova voce"}
-          </h2>
+        <Card className="h-fit">
+          <CardHeader>
+            <CardTitle>{editingId ? "Modifica voce" : "Nuova voce"}</CardTitle>
+          </CardHeader>
 
-          <div className="space-y-3">
-            <select
-              className="w-full rounded border p-2"
-              value={form.category}
-              onChange={(e) => setForm({ ...form, category: e.target.value })}
-            >
-              {CATEGORIES.map((category) => (
-                <option key={category} value={category}>
-                  {category}
-                </option>
-              ))}
-            </select>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="kb-category">Categoria</Label>
+              <Select
+                value={form.category}
+                onValueChange={(value) => setForm({ ...form, category: value })}
+              >
+                <SelectTrigger id="kb-category" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
 
-            <input
-              className="w-full rounded border p-2"
-              placeholder="Titolo"
-              value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })}
-            />
+                <SelectContent>
+                  {CATEGORIES.map((category) => (
+                    <SelectItem key={category} value={category}>
+                      {category}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-            <textarea
-              className="w-full rounded border p-2"
-              placeholder="Contenuto"
-              rows={5}
-              value={form.content}
-              onChange={(e) => setForm({ ...form, content: e.target.value })}
-            />
+            <div className="space-y-2">
+              <Label htmlFor="kb-title">Titolo</Label>
+              <Input
+                id="kb-title"
+                placeholder="Es. Sottosterzo in ingresso curva"
+                value={form.title}
+                onChange={(e) => setForm({ ...form, title: e.target.value })}
+              />
+            </div>
 
-            <input
-              className="w-full rounded border p-2"
-              placeholder="Tag separati da virgola (es. sottosterzo, freni, GT3)"
-              value={form.tags}
-              onChange={(e) => setForm({ ...form, tags: e.target.value })}
-            />
+            <div className="space-y-2">
+              <Label htmlFor="kb-content">Contenuto</Label>
+              <Textarea
+                id="kb-content"
+                placeholder="Il consiglio, spiegato come lo diresti a voce."
+                rows={6}
+                value={form.content}
+                onChange={(e) => setForm({ ...form, content: e.target.value })}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="kb-tags">Tag</Label>
+              <Input
+                id="kb-tags"
+                placeholder="Separati da virgola: sottosterzo, freni, GT3"
+                value={form.tags}
+                onChange={(e) => setForm({ ...form, tags: e.target.value })}
+              />
+              <p className="text-muted-foreground text-xs">
+                I tag alimentano la ricerca con cui il coach seleziona le voci
+                pertinenti al messaggio.
+              </p>
+            </div>
 
             <div className="flex gap-3">
-              <button
-                className="rounded border px-4 py-2 disabled:opacity-50"
-                onClick={save}
-                disabled={saving}
-              >
+              <Button onClick={save} disabled={saving}>
                 {saving
                   ? "Salvataggio..."
                   : editingId
                     ? "Aggiorna voce"
                     : "Salva voce"}
-              </button>
+              </Button>
 
               {editingId && (
-                <button
-                  className="rounded border px-4 py-2"
-                  onClick={cancelEdit}
-                  disabled={saving}
-                >
+                <Button variant="ghost" onClick={cancelEdit} disabled={saving}>
                   Annulla
-                </button>
+                </Button>
               )}
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
-        <div className="rounded-lg border p-4">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold">Voci salvate</h2>
+        <Card>
+          <CardHeader className="gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <CardTitle>Voci salvate</CardTitle>
 
-            <input
-              className="rounded border p-2 text-sm"
-              placeholder="Cerca..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
+            <div className="relative sm:w-56">
+              <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
+              <Input
+                className="pl-8"
+                placeholder="Cerca..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+          </CardHeader>
 
-          {isPending && <p>Caricamento...</p>}
+          <CardContent className="space-y-3">
+            {isPending && (
+              <>
+                <Skeleton className="h-28 rounded-lg" />
+                <Skeleton className="h-28 rounded-lg" />
+              </>
+            )}
 
-          {!isPending && (!data?.items || data.items.length === 0) && (
-            <p className="text-sm text-gray-500">Nessuna voce trovata.</p>
-          )}
+            {!isPending && (!data?.items || data.items.length === 0) && (
+              <p className="text-muted-foreground text-sm">
+                Nessuna voce trovata.
+              </p>
+            )}
 
-          <div className="space-y-3">
             {data?.items?.map((entry) => (
-              <div key={entry.id} className="rounded border p-3">
-                <div className="flex items-center justify-between">
-                  <div className="font-medium">{entry.title}</div>
-                  <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+              <div key={entry.id} className="rounded-lg border p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="truncate font-medium">{entry.title}</div>
+                  <Badge variant="secondary" className="shrink-0">
                     {entry.category}
-                  </span>
+                  </Badge>
                 </div>
 
-                <p className="mt-2 text-sm text-gray-600">{entry.content}</p>
+                <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
+                  {entry.content}
+                </p>
 
                 {entry.tags && (
-                  <div className="mt-2 text-xs text-gray-400">
-                    Tag: {entry.tags}
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {entry.tags
+                      .split(",")
+                      .map((tag) => tag.trim())
+                      .filter(Boolean)
+                      .map((tag) => (
+                        <Badge key={tag} variant="outline" className="text-xs">
+                          {tag}
+                        </Badge>
+                      ))}
                   </div>
                 )}
 
-                <div className="mt-3 flex gap-3">
-                  <button
-                    className="text-sm text-blue-600 underline"
+                <div className="mt-3 flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={() => startEdit(entry)}
                   >
+                    <Pencil className="size-3.5" />
                     Modifica
-                  </button>
-                  <button
-                    className="text-sm text-red-600 underline disabled:opacity-50"
+                  </Button>
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive hover:text-destructive"
                     disabled={busyId === entry.id}
                     onClick={() => remove(entry.id)}
                   >
+                    <Trash2 className="size-3.5" />
                     Elimina
-                  </button>
+                  </Button>
                 </div>
               </div>
             ))}
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

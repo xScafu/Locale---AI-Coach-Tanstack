@@ -5,17 +5,25 @@ export default function MessageBubble({ message }: { message: Message }) {
 
   return (
     <div
-      className={`
-    p-4 rounded-lg max-w-2xl
-    ${isUser ? "ml-auto bg-blue-100" : "mr-auto bg-gray-100"}
-    `}
+      className={
+        isUser
+          ? "bg-primary text-primary-foreground ml-auto max-w-2xl rounded-lg rounded-br-sm px-4 py-3"
+          : "bg-muted mr-auto max-w-2xl rounded-lg rounded-bl-sm px-4 py-3"
+      }
     >
-      <div>{message.content}</div>
+      <div className="text-sm leading-relaxed whitespace-pre-wrap">
+        {message.content}
+      </div>
 
       {message.tokens && (
-        <div className="text-xs mt-2 opacity-60">
-          Token:
-          {message.tokens}
+        <div
+          className={
+            isUser
+              ? "mt-2 font-mono text-xs opacity-70"
+              : "text-muted-foreground mt-2 font-mono text-xs"
+          }
+        >
+          {message.tokens} token
         </div>
       )}
     </div>

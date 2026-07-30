@@ -147,6 +147,12 @@ L'upload passa da un `bodyLimit` dedicato di 200 MB in `index.ts`.
   grafico all'altro.
 - `--font-mono` è impostato per tempi sul giro e valori di telemetria: cifre a larghezza
   fissa, così i numeri non "ballano" mentre si aggiornano.
+- **Il padding di pagina lo mette `AppLayout`** (`max-w-7xl p-6`). Le pagine partono da
+  `<div className="space-y-6">` e non aggiungono `p-6`/`p-8`, altrimenti il margine
+  raddoppia. Per il titolo si usa `components/layout/PageHeader.tsx`.
+- Radix `Select` non accetta `SelectItem` con `value=""`: dove serve un'opzione "nessuno"
+  si usa un valore sentinella da tradurre in stringa vuota (vedi `NONE` in
+  `routes/telemetry.tsx`).
 
 ## Trappole note
 
@@ -161,6 +167,14 @@ L'upload passa da un `bodyLimit` dedicato di 200 MB in `index.ts`.
 - La dashboard mostra il **primo** pilota/auto/circuito, non quello attivo:
   `dashboard.repository.ts` fa `.limit(1)` senza filtrare su `isActive`. Divergenza dal
   resto dell'app, che passa sempre da `getActivePilot` / `getActiveCar`.
+- **L'import di telemetria fallisce** con `Do not know how to serialize a BigInt`:
+  `inspectDuckDbFile` mette il `rowCount` di `COUNT(*)` (un BigInt, per DuckDB) dentro un
+  `JSON.stringify`, che sui BigInt lancia. Va convertito con `Number(...)` prima di
+  serializzare.
+- Il pilota attivo esiste in **due posti che possono divergere**: `isActive` sul DB lato
+  server e `pilotId` in `stores/pilot.store.ts`, che vive solo in `localStorage`. Su un
+  browser che non l'ha mai popolato, Garage/Circuiti/Telemetria si comportano come se non
+  ci fosse alcun pilota, anche quando il server ne ha uno attivo.
 - `server/.env.example` cita `DATABASE_URL`, ma non è letto da nessuna parte: il path del
   DB è hardcoded in `db/index.ts` e in `drizzle.config.ts`.
 - La tabella `settings` ha `autoSummaryEvery`, ma `memory.manager.ts` usa `20` hardcoded.

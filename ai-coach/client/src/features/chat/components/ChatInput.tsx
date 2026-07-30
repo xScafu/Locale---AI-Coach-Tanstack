@@ -1,4 +1,8 @@
 import { useState } from "react";
+import { Loader2, SendHorizontal } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 import { useChat } from "../hooks/useChat";
 
@@ -33,11 +37,9 @@ export default function ChatInput() {
   }
 
   return (
-    <div className="border-t p-4 flex gap-3">
-      <input
-        className="
-          border rounded p-2 flex-1
-        "
+    <div className="flex shrink-0 gap-3 border-t p-4">
+      <Input
+        className="flex-1"
         value={value}
         disabled={loading}
         onChange={(e) => setValue(e.target.value)}
@@ -45,22 +47,19 @@ export default function ChatInput() {
         placeholder="Scrivi un messaggio..."
       />
 
-      <button
-        className="
-          border px-5 rounded disabled:opacity-50
-        "
-        disabled={loading}
-        onClick={submit}
-      >
+      <Button disabled={loading || !value.trim()} onClick={submit}>
         {loading ? (
-          <span className="flex items-center gap-2">
-            <span className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />
+          <>
+            <Loader2 className="size-4 animate-spin" />
             Attendo...
-          </span>
+          </>
         ) : (
-          "Invia"
+          <>
+            <SendHorizontal className="size-4" />
+            Invia
+          </>
         )}
-      </button>
+      </Button>
     </div>
   );
 }
