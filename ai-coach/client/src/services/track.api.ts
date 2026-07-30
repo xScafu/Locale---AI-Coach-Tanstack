@@ -14,6 +14,33 @@ export type TrackCorner = {
   rpmAtApex: number | null;
 };
 
+export type CornerReference = {
+  number: number;
+  bestMinSpeedKmh: number;
+  bestLapNumber: number;
+  averageMinSpeedKmh: number;
+  bestLapMinSpeedKmh: number;
+  deltaKmh: number;
+};
+
+export type TrackSector = {
+  number: number;
+  fromM: number;
+  toM: number;
+  bestSeconds: number;
+  bestLapNumber: number;
+  bestLapSeconds: number;
+};
+
+export type TrackReference = {
+  lapsAnalyzed: number;
+  bestLapSeconds: number;
+  theoreticalLapSeconds: number | null;
+  potentialGainSeconds: number | null;
+  sectors: TrackSector[];
+  corners: CornerReference[];
+};
+
 export type TrackProfile = {
   lengthM: number;
   bestLapSeconds: number;
@@ -25,6 +52,7 @@ export type TrackProfile = {
     mergeGapM: number;
     minPeakG: number;
   };
+  reference: TrackReference | null;
 };
 
 export type Track = {

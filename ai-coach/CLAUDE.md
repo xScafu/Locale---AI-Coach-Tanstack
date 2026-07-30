@@ -155,6 +155,31 @@ dal profilo, ma `saveTrackProfile` li sovrascrive **solo se vuoti**: un valore c
 mano dal pilota sopravvive ai nuovi import. Il profilo grezzo sta in `tracks.profile`
 come JSON e viene rigenerato per intero ogni volta.
 
+### Riferimento personale (`profile.reference`)
+
+Confronta **tutti** i giri dello stint, non solo il migliore: per ogni settore il tempo
+più veloce (anche se viene da giri diversi) e per ogni curva la velocità minima più alta.
+La somma dei settori migliori è il **giro teorico**.
+
+**Solo i giri continui entrano nel confronto.** LMU tiene `Lap Dist` a 0 finché l'auto è
+ferma ai box, poi la fa saltare di colpo al punto di rientro in pista. Su quel giro tutti
+i traguardi intermedi risultano attraversati nello stesso istante, e i suoi "settori" da
+pochi millesimi battono qualsiasi giro vero: senza filtro il giro teorico veniva 33s
+invece di 96s. Il criterio è la continuità (nessun avanzamento oltre 100 m tra due
+campioni a 10 Hz, cioè 3600 km/h), non il valore iniziale — che in quel caso è proprio 0
+e quindi non distingue nulla.
+
+`theoreticalLapSeconds` è `null` se anche un solo settore non ha un tempo valido: una
+somma parziale sembrerebbe un giro teorico strepitoso mentre è solo incompleta.
+
+**Limite noto.** Un giro in cui il pilota taglia una chicane risulta più veloce in quella
+curva e finisce tra i "massimi personali". Il file espone `SurfaceTypes` (5 Hz) e
+`Track Edge` (10 Hz), che permetterebbero di scartare i giri fuori pista: non è ancora
+implementato.
+
+Attenzione anche a `lapNumber`: viene da `labelForTime` sugli eventi `Lap` e **non è
+univoco**, più segmenti possono condividere la stessa etichetta.
+
 ### Client (`client/src`) — TanStack Router (file-based)
 
 - Le rotte sono **file-based**: `routes/*.tsx` genera `routeTree.gen.ts` tramite il

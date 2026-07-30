@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Hono } from "hono";
 import {
@@ -16,6 +16,7 @@ import {
   getLapTelemetrySeries,
   getMetadata,
   inspectDuckDbFile,
+  releaseDuckDbFile,
   runReadOnlyQuery,
 } from "../services/telemetry.service";
 
@@ -28,6 +29,67 @@ telemetry.get("/", async (c) => {
   const carId = c.req.query("carId");
   const items = await getTelemetryImports(carId);
   return c.json({ items });
+});
+
+// I file .duckdb rimasti su disco senza una riga corrispondente in
+// telemetry_imports. Prima che l'eliminazione rimuovesse anche il file
+// se ne accumulavano centinaia di MB.
+//
+// Registrata PRIMA di "/:id": Hono risolve nell'ordine di
+// registrazione, quindi con l'ordine invertito "orphans" verrebbe letto
+// come un id.
+async function findOrphanFiles() {
+  await mkdir(STORAGE_DIR, { recursive: true });
+
+  const imports = await getTelemetryImports();
+  const known = new Set(
+    imports.map((i) => path.resolve(i.filePath).toLowerCase())
+  );
+
+  const entries = await readdir(STORAGE_DIR);
+  const orphans: { file: string; fullPath: string; bytes: number }[] = [];
+
+  for (const entry of entries) {
+    if (!entry.toLowerCase().endsWith(".duckdb")) continue;
+
+    const fullPath = path.join(STORAGE_DIR, entry);
+    if (known.has(path.resolve(fullPath).toLowerCase())) continue;
+
+    const info = await stat(fullPath);
+    orphans.push({ file: entry, fullPath, bytes: info.size });
+  }
+
+  return orphans;
+}
+
+telemetry.get("/orphans", async (c) => {
+  const orphans = await findOrphanFiles();
+
+  return c.json({
+    items: orphans.map(({ file, bytes }) => ({ file, bytes })),
+    totalBytes: orphans.reduce((sum, o) => sum + o.bytes, 0),
+  });
+});
+
+telemetry.delete("/orphans", async (c) => {
+  const orphans = await findOrphanFiles();
+
+  let deleted = 0;
+  let freedBytes = 0;
+  const failed: string[] = [];
+
+  for (const orphan of orphans) {
+    try {
+      await releaseDuckDbFile(orphan.fullPath);
+      await rm(orphan.fullPath, { force: true });
+      deleted++;
+      freedBytes += orphan.bytes;
+    } catch {
+      failed.push(orphan.file);
+    }
+  }
+
+  return c.json({ deleted, freedBytes, failed });
 });
 
 telemetry.get("/:id", async (c) => {
@@ -206,7 +268,24 @@ telemetry.delete("/:id", async (c) => {
 
   await deleteTelemetryImport(id);
 
-  return c.json({ ok: true });
+  // Prima veniva cancellata solo la riga: il file .duckdb restava su
+  // disco per sempre, scollegato da tutto. Il rilascio della
+  // connessione deve precedere l'unlink, altrimenti su Windows il file
+  // risulta ancora aperto dalla cache di openDb e la cancellazione
+  // fallisce.
+  let fileRemoved = true;
+
+  try {
+    await releaseDuckDbFile(item.filePath);
+    await rm(item.filePath, { force: true });
+  } catch (error) {
+    // L'import e' comunque sparito dal DB: il file rimasto indietro
+    // verra' recuperato da DELETE /api/telemetry/orphans.
+    console.error("[telemetry] file non rimosso:", item.filePath, error);
+    fileRemoved = false;
+  }
+
+  return c.json({ ok: true, fileRemoved });
 });
 
 export default telemetry;

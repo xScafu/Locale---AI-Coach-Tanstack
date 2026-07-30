@@ -111,6 +111,27 @@ export async function inspectDuckDbFile(
   }
 }
 
+// Chiude e dimentica la connessione aperta su un file .duckdb.
+// Indispensabile prima di cancellarlo: su Windows l'unlink di un file
+// ancora aperto fallisce con EBUSY, e la cache di openDb lo tiene
+// aperto per tutta la vita del processo.
+export async function releaseDuckDbFile(filePath: string) {
+  summaryCache.delete(filePath);
+
+  const cached = dbCache.get(filePath);
+  if (!cached) return;
+
+  dbCache.delete(filePath);
+
+  await new Promise<void>((resolve) => {
+    try {
+      cached.close(() => resolve());
+    } catch {
+      resolve();
+    }
+  });
+}
+
 export async function runReadOnlyQuery(filePath: string, sql: string) {
   const database = await openDb(filePath);
   const conn = database.connect();
@@ -552,12 +573,49 @@ export type TrackCorner = {
   rpmAtApex: number | null;
 };
 
+export type CornerReference = {
+  number: number;
+  // Il massimo tra le velocita' minime: in curva "meglio" vuol dire
+  // passare piu' veloci nel punto piu' lento.
+  bestMinSpeedKmh: number;
+  bestLapNumber: number;
+  averageMinSpeedKmh: number;
+  // Quanto il giro piu' veloce perde, in questa curva, rispetto al
+  // meglio che il pilota ha gia' fatto in un giro qualsiasi.
+  bestLapMinSpeedKmh: number;
+  deltaKmh: number;
+};
+
+export type TrackSector = {
+  number: number;
+  fromM: number;
+  toM: number;
+  bestSeconds: number;
+  bestLapNumber: number;
+  bestLapSeconds: number;
+};
+
+export type TrackReference = {
+  lapsAnalyzed: number;
+  bestLapSeconds: number;
+  // Somma dei migliori settori, ognuno potenzialmente da un giro
+  // diverso: il tempo che il pilota ha gia' dimostrato di saper fare a
+  // pezzi, ma mai tutto insieme. null se anche un solo settore non ha
+  // un tempo valido, perche' una somma parziale sembrerebbe un giro
+  // teorico strepitoso mentre e' solo incompleta.
+  theoreticalLapSeconds: number | null;
+  potentialGainSeconds: number | null;
+  sectors: TrackSector[];
+  corners: CornerReference[];
+};
+
 export type TrackProfile = {
   lengthM: number;
   bestLapSeconds: number;
   lapsAnalyzed: number;
   corners: TrackCorner[];
   detection: typeof DETECTION;
+  reference: TrackReference | null;
 };
 
 // Parametri di rilevamento, tarati sul giro migliore di un file reale
@@ -595,6 +653,204 @@ function alignToLapGrid(
   }
 
   return out;
+}
+
+// Istante (in secondi dall'inizio del giro) in cui il giro raggiunge
+// una certa distanza. Interpola tra i due campioni che la racchiudono:
+// a 10Hz un campione vale 0.1s, troppo grossolano per confrontare
+// settori che differiscono di pochi centesimi.
+function timeAtDistance(
+  lapDist: number[],
+  gridFreq: number,
+  target: number
+): number | null {
+  // Il giro non e' mai passato da quel punto: comincia gia' oltre.
+  // Senza questo controllo il ciclo qui sotto trova subito il primo
+  // campione e restituisce un istante prossimo a zero, cosicche' due
+  // confini consecutivi danno lo stesso tempo e il settore risulta
+  // lungo pochi millesimi. Un out-lap batteva cosi' ogni giro vero.
+  if (lapDist.length === 0 || target < lapDist[0]) return null;
+
+  for (let i = 1; i < lapDist.length; i++) {
+    if (lapDist[i] >= target) {
+      const span = lapDist[i] - lapDist[i - 1];
+      const ratio = span > 0 ? (target - lapDist[i - 1]) / span : 0;
+
+      return (i - 1 + ratio) / gridFreq;
+    }
+  }
+
+  return null;
+}
+
+function computeReference(
+  corners: TrackCorner[],
+  lengthM: number,
+  laps: { startIdx: number; endIdx: number; lapNumber: number }[],
+  lapDistAll: number[],
+  speedAll: number[],
+  speedFreq: number,
+  gridFreq: number
+): TrackReference | null {
+  if (corners.length === 0 || laps.length === 0) return null;
+
+  // Confini dei settori: il traguardo, l'ingresso di ogni curva, la fine
+  // del giro. Un settore per ogni tratto tra due ingressi.
+  const bounds = [0, ...corners.map((c) => c.entryM), lengthM];
+
+  type LapStat = {
+    lapNumber: number;
+    totalSeconds: number;
+    sectorSeconds: (number | null)[];
+    cornerMinSpeed: (number | null)[];
+  };
+
+  const stats: LapStat[] = [];
+
+  for (const lap of laps) {
+    const dist = lapDistAll.slice(lap.startIdx, lap.endIdx + 1);
+    if (dist.length < 2) continue;
+
+    // Solo giri percorsi per intero e senza discontinuita'.
+    //
+    // Il caso che conta davvero e' il giro di uscita dai box: LMU tiene
+    // "Lap Dist" a 0 finche' l'auto e' ferma, poi la fa saltare di colpo
+    // al punto in cui rientra in pista. Tutti i traguardi intermedi
+    // risultano cosi' attraversati nello stesso istante, e quel giro
+    // vincerebbe ogni settore con pochi millesimi.
+    //
+    // Un giro vero non puo' avanzare di 100 m in un decimo di secondo:
+    // sarebbero 3600 km/h. Il salto e' quindi il segnale piu' netto,
+    // molto piu' del valore iniziale (che qui e' proprio 0, e per questo
+    // un controllo su dist[0] non basta).
+    const maxStepM = 100;
+    let continuous = true;
+
+    for (let i = 1; i < dist.length; i++) {
+      if (dist[i] - dist[i - 1] > maxStepM) {
+        continuous = false;
+        break;
+      }
+    }
+
+    const reachesEnd = dist[dist.length - 1] >= lengthM * 0.95;
+
+    if (!continuous || !reachesEnd) continue;
+
+    const speedAt = (i: number) => {
+      const t = (lap.startIdx + i) / gridFreq;
+      const idx = Math.min(Math.round(t * speedFreq), speedAll.length - 1);
+      return speedAll[idx];
+    };
+
+    const crossings = bounds.map((b) => timeAtDistance(dist, gridFreq, b));
+
+    const sectorSeconds = crossings.slice(1).map((end, k) => {
+      const start = crossings[k];
+      if (start === null || end === null) return null;
+      return end - start;
+    });
+
+    const cornerMinSpeed = corners.map((corner) => {
+      let min: number | null = null;
+
+      for (let i = 0; i < dist.length; i++) {
+        if (dist[i] < corner.entryM) continue;
+        if (dist[i] > corner.exitM) break;
+
+        const v = speedAt(i);
+        if (min === null || v < min) min = v;
+      }
+
+      return min;
+    });
+
+    stats.push({
+      lapNumber: lap.lapNumber,
+      totalSeconds: (lap.endIdx - lap.startIdx + 1) / gridFreq,
+      sectorSeconds,
+      cornerMinSpeed,
+    });
+  }
+
+  if (stats.length === 0) return null;
+
+  const fastest = stats.reduce((b, c) =>
+    c.totalSeconds < b.totalSeconds ? c : b
+  );
+
+  const sectors: TrackSector[] = bounds.slice(1).map((to, k) => {
+    let best: { seconds: number; lapNumber: number } | null = null;
+
+    for (const stat of stats) {
+      const value = stat.sectorSeconds[k];
+      if (value === null || value === undefined || value <= 0) continue;
+      if (!best || value < best.seconds) {
+        best = { seconds: value, lapNumber: stat.lapNumber };
+      }
+    }
+
+    return {
+      number: k + 1,
+      fromM: Math.round(bounds[k]),
+      toM: Math.round(to),
+      bestSeconds: best ? Math.round(best.seconds * 1000) / 1000 : 0,
+      bestLapNumber: best?.lapNumber ?? 0,
+      bestLapSeconds:
+        Math.round((fastest.sectorSeconds[k] ?? 0) * 1000) / 1000,
+    };
+  });
+
+  const cornerRefs: CornerReference[] = corners.map((corner, k) => {
+    const values: { speed: number; lapNumber: number }[] = [];
+
+    for (const stat of stats) {
+      const v = stat.cornerMinSpeed[k];
+      if (v !== null && v !== undefined) {
+        values.push({ speed: v, lapNumber: stat.lapNumber });
+      }
+    }
+
+    const best = values.reduce(
+      (b, c) => (c.speed > b.speed ? c : b),
+      values[0] ?? { speed: 0, lapNumber: 0 }
+    );
+
+    const average =
+      values.length > 0
+        ? values.reduce((sum, v) => sum + v.speed, 0) / values.length
+        : 0;
+
+    const onFastest = fastest.cornerMinSpeed[k] ?? 0;
+
+    return {
+      number: corner.number,
+      bestMinSpeedKmh: Math.round(best.speed * 10) / 10,
+      bestLapNumber: best.lapNumber,
+      averageMinSpeedKmh: Math.round(average * 10) / 10,
+      bestLapMinSpeedKmh: Math.round(onFastest * 10) / 10,
+      deltaKmh: Math.round((best.speed - onFastest) * 10) / 10,
+    };
+  });
+
+  const complete = sectors.every((s) => s.bestSeconds > 0);
+
+  const theoretical = complete
+    ? sectors.reduce((sum, s) => sum + s.bestSeconds, 0)
+    : null;
+
+  return {
+    lapsAnalyzed: stats.length,
+    bestLapSeconds: Math.round(fastest.totalSeconds * 1000) / 1000,
+    theoreticalLapSeconds:
+      theoretical === null ? null : Math.round(theoretical * 1000) / 1000,
+    potentialGainSeconds:
+      theoretical === null
+        ? null
+        : Math.round((fastest.totalSeconds - theoretical) * 1000) / 1000,
+    sectors,
+    corners: cornerRefs,
+  };
 }
 
 export async function computeTrackProfile(
@@ -745,13 +1001,32 @@ export async function computeTrackProfile(
       };
     });
 
+    const lengthM = Math.round(Math.max(...dist));
+
+    // Il riferimento guarda TUTTI i giri, non solo il migliore: serve a
+    // dire dove il pilota ha gia' fatto meglio di quanto abbia fatto
+    // nel suo giro piu' veloce.
+    const speedFreq = freqOf("Ground Speed") ?? gridFreq;
+    const speedAll = await fetchWholeChannel(conn, "Ground Speed");
+
+    const reference = computeReference(
+      corners,
+      lengthM,
+      valid,
+      lapDistAll,
+      speedAll,
+      speedFreq,
+      gridFreq
+    );
+
     return {
-      lengthM: Math.round(Math.max(...dist)),
+      lengthM,
       bestLapSeconds:
         Math.round(((best.endIdx - best.startIdx + 1) / gridFreq) * 1000) / 1000,
       lapsAnalyzed: valid.length,
       corners,
       detection: DETECTION,
+      reference,
     };
   } finally {
     closeConn(conn);

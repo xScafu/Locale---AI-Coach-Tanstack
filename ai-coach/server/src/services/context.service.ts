@@ -60,6 +60,46 @@ function buildTrackSection(track: any) {
       "frenata ne' correzione di traiettoria con questa auto."
   );
 
+  const reference = profile.reference;
+
+  if (reference) {
+    lines.push("");
+    lines.push(
+      `Confronto su ${reference.lapsAnalyzed} giri completi dello stesso stint:`
+    );
+
+    if (reference.theoreticalLapSeconds !== null) {
+      lines.push(
+        `- Giro migliore ${reference.bestLapSeconds}s, giro teorico ` +
+          `${reference.theoreticalLapSeconds}s (somma dei settori migliori): ` +
+          `${reference.potentialGainSeconds}s gia' alla portata del pilota ` +
+          "senza migliorare nulla di nuovo, solo mettendo insieme cio' che ha " +
+          "gia' fatto."
+      );
+    }
+
+    // Solo le curve dove c'e' davvero margine: elencarle tutte
+    // annacquerebbe il segnale.
+    const gaps = reference.corners
+      .filter((c: any) => c.deltaKmh >= 3)
+      .sort((a: any, b: any) => b.deltaKmh - a.deltaKmh)
+      .slice(0, 5);
+
+    if (gaps.length > 0) {
+      lines.push(
+        "- Curve dove il pilota e' gia' passato piu' veloce in un altro giro " +
+          "(nel giro migliore -> suo massimo, giro di riferimento):"
+      );
+
+      for (const c of gaps) {
+        lines.push(
+          `  Curva ${c.number}: ${c.bestLapMinSpeedKmh} -> ${c.bestMinSpeedKmh} km/h ` +
+            `(+${c.deltaKmh}, giro ${c.bestLapNumber})`
+        );
+      }
+    }
+  }
+
   return lines.join("\n");
 }
 

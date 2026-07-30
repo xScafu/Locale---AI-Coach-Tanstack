@@ -134,10 +134,36 @@ function TrackProfileCard({ track }: { track: Track }) {
                 </span>
               </span>
               <span>
-                <span className="text-muted-foreground">Giri analizzati: </span>
+                {/* Diverso dai "giri completi" del confronto qui sotto:
+                    qui sono tutti i giri sopra i 20s, li' solo quelli
+                    percorsi senza interruzioni. */}
+                <span className="text-muted-foreground">Giri nel file: </span>
                 <span className="font-mono">{profile.lapsAnalyzed}</span>
               </span>
             </div>
+
+            {profile.reference?.theoreticalLapSeconds != null && (
+              <div className="bg-muted/40 rounded-lg border p-4">
+                <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
+                  <span className="text-sm font-medium">Giro teorico</span>
+
+                  <span className="font-mono text-2xl font-semibold tracking-tight">
+                    {formatLapTime(profile.reference.theoreticalLapSeconds)}
+                  </span>
+
+                  <span className="text-primary font-mono text-sm">
+                    −{profile.reference.potentialGainSeconds?.toFixed(3)}s sul
+                    tuo migliore
+                  </span>
+                </div>
+
+                <p className="text-muted-foreground mt-2 text-sm">
+                  Somma dei settori più veloci, presi da giri diversi su{" "}
+                  {profile.reference.lapsAnalyzed} giri completi. È tempo che
+                  hai già dimostrato di saper fare a pezzi, mai tutto insieme.
+                </p>
+              </div>
+            )}
 
             <div className="overflow-x-auto rounded-lg border">
               <Table>
@@ -146,36 +172,60 @@ function TrackProfileCard({ track }: { track: Track }) {
                     <TableHead>Curva</TableHead>
                     <TableHead>Ingresso</TableHead>
                     <TableHead>Minima</TableHead>
+                    <TableHead>Tuo massimo</TableHead>
                     <TableHead>G lat.</TableHead>
                     <TableHead>Staccata</TableHead>
                   </TableRow>
                 </TableHeader>
 
                 <TableBody>
-                  {profile.corners.map((corner) => (
-                    <TableRow key={corner.number}>
-                      <TableCell className="font-medium">
-                        {corner.number}
-                        <Badge variant="outline" className="ml-2">
-                          {corner.direction}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="font-mono">
-                        {corner.entryM} m
-                      </TableCell>
-                      <TableCell className="font-mono">
-                        {corner.minSpeedKmh} km/h
-                      </TableCell>
-                      <TableCell className="font-mono">
-                        {corner.peakLatG}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground font-mono">
-                        {corner.brakingDistanceM !== null
-                          ? `${corner.brakingDistanceM} m prima`
-                          : "—"}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {profile.corners.map((corner) => {
+                    const ref = profile.reference?.corners.find(
+                      (c) => c.number === corner.number
+                    );
+
+                    return (
+                      <TableRow key={corner.number}>
+                        <TableCell className="font-medium">
+                          {corner.number}
+                          <Badge variant="outline" className="ml-2">
+                            {corner.direction}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="font-mono">
+                          {corner.entryM} m
+                        </TableCell>
+                        <TableCell className="font-mono">
+                          {corner.minSpeedKmh} km/h
+                        </TableCell>
+                        <TableCell className="font-mono">
+                          {ref ? (
+                            <>
+                              {ref.bestMinSpeedKmh} km/h
+                              {ref.deltaKmh >= 3 && (
+                                <span className="text-primary ml-2">
+                                  +{ref.deltaKmh}
+                                </span>
+                              )}
+                              <span className="text-muted-foreground ml-2 text-xs">
+                                giro {ref.bestLapNumber}
+                              </span>
+                            </>
+                          ) : (
+                            "—"
+                          )}
+                        </TableCell>
+                        <TableCell className="font-mono">
+                          {corner.peakLatG}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground font-mono">
+                          {corner.brakingDistanceM !== null
+                            ? `${corner.brakingDistanceM} m prima`
+                            : "—"}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
