@@ -38,6 +38,36 @@ function closeConn(conn: duckdb.Connection) {
   conn.close();
 }
 
+// DuckDB restituisce gli interi a 64 bit come BigInt, e JSON.stringify
+// lancia "Do not know how to serialize a BigInt": è così che ogni import
+// finiva in stato "error". Le colonne dei file di telemetria sono
+// FLOAT/DOUBLE/INTEGER, quindi il BigInt non arriva dai dati grezzi ma
+// dalle aggregazioni (COUNT, SUM), che tornano sempre BIGINT/HUGEINT.
+// Va applicata a tutto ciò che finisce in una risposta JSON o nella
+// colonna `tables` di telemetry_imports.
+function toJsonSafe(value: unknown): unknown {
+  if (typeof value === "bigint") {
+    // Oltre 2^53 Number perderebbe cifre in silenzio: meglio una stringa
+    // esatta che un numero sbagliato.
+    const asNumber = Number(value);
+    return Number.isSafeInteger(asNumber) ? asNumber : value.toString();
+  }
+
+  if (Array.isArray(value)) return value.map(toJsonSafe);
+
+  // Date e Buffer li serializza già JSON.stringify: ricostruirli campo
+  // per campo li trasformerebbe in oggetti inutilizzabili.
+  if (value instanceof Date || value instanceof Uint8Array) return value;
+
+  if (value !== null && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [key, v] of Object.entries(value)) out[key] = toJsonSafe(v);
+    return out;
+  }
+
+  return value;
+}
+
 export async function inspectDuckDbFile(
   filePath: string
 ): Promise<TableInfo[]> {
@@ -58,7 +88,7 @@ export async function inspectDuckDbFile(
         `SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '${t.table_name}'`
       );
 
-      const countRows = await all<{ count: number }>(
+      const countRows = await all<{ count: bigint }>(
         conn,
         `SELECT COUNT(*) as count FROM "${t.table_name}"`
       );
@@ -69,7 +99,9 @@ export async function inspectDuckDbFile(
           name: c.column_name,
           type: c.data_type,
         })),
-        rowCount: countRows[0]?.count ?? 0,
+        // COUNT(*) torna BIGINT: senza Number() il JSON.stringify della
+        // route fallisce e l'import viene salvato come "error".
+        rowCount: Number(countRows[0]?.count ?? 0),
       });
     }
 
@@ -87,13 +119,36 @@ export async function runReadOnlyQuery(filePath: string, sql: string) {
     const hasLimit = /limit\s+\d+/i.test(sql);
     const finalSql = hasLimit ? sql : `${sql.replace(/;\s*$/, "")} LIMIT 200`;
 
-    return await all(conn, finalSql);
+    const rows = await all(conn, finalSql);
+
+    // La query arriva dal client e viene rimandata indietro come JSON:
+    // basta un COUNT/SUM per avere BigInt tra i risultati.
+    return toJsonSafe(rows) as Record<string, unknown>[];
   } finally {
     closeConn(conn);
   }
 }
 
 export type ChannelMeta = { name: string; frequency: number; unit: string };
+
+// Unico punto di lettura di channelsList: `frequency` finisce sia nelle
+// risposte JSON sia come divisore negli allineamenti per indice, dove un
+// BigInt darebbe "Cannot mix BigInt and other types". Nei file esistenti
+// la colonna è INTEGER, ma la conversione costa nulla e vale per tutti i
+// chiamanti.
+async function fetchChannels(conn: duckdb.Connection): Promise<ChannelMeta[]> {
+  const rows = await all<{
+    channelName: string;
+    frequency: number | bigint;
+    unit: string | null;
+  }>(conn, `SELECT "channelName", "frequency", "unit" FROM "channelsList"`);
+
+  return rows.map((r) => ({
+    name: r.channelName,
+    frequency: Number(r.frequency),
+    unit: r.unit ?? "",
+  }));
+}
 
 export async function getChannelsList(
   filePath: string
@@ -102,17 +157,7 @@ export async function getChannelsList(
   const conn = database.connect();
 
   try {
-    const rows = await all<{
-      channelName: string;
-      frequency: number;
-      unit: string;
-    }>(conn, `SELECT "channelName", "frequency", "unit" FROM "channelsList"`);
-
-    return rows.map((r) => ({
-      name: r.channelName,
-      frequency: r.frequency,
-      unit: r.unit,
-    }));
+    return await fetchChannels(conn);
   } finally {
     closeConn(conn);
   }
@@ -202,10 +247,17 @@ export async function computeLapSegments(
 
   const boundaries = [0, ...resetIndices, lapDist.length];
 
-  const lapEvents = await all<{ ts: number; value: number }>(
-    conn,
-    `SELECT "ts", "value" FROM "Lap" ORDER BY "ts" ASC`
-  );
+  const lapEventRows = await all<{
+    ts: number | bigint;
+    value: number | bigint;
+  }>(conn, `SELECT "ts", "value" FROM "Lap" ORDER BY "ts" ASC`);
+
+  // `value` diventa il lapNumber restituito in JSON dalla route /laps:
+  // convertito qui una volta sola invece che in ogni chiamante.
+  const lapEvents = lapEventRows.map((e) => ({
+    ts: Number(e.ts),
+    value: Number(e.value),
+  }));
 
   function labelForTime(t: number): number {
     let label = lapEvents[0]?.value ?? 0;
@@ -242,15 +294,7 @@ export async function getLaps(filePath: string): Promise<LapInfo[]> {
   const conn = database.connect();
 
   try {
-    const channelRows = await all<{ channelName: string; frequency: number }>(
-      conn,
-      `SELECT "channelName", "frequency" FROM "channelsList"`
-    );
-    const channels: ChannelMeta[] = channelRows.map((c) => ({
-      name: c.channelName,
-      frequency: c.frequency,
-      unit: "",
-    }));
+    const channels = await fetchChannels(conn);
 
     const segments = await computeLapSegments(conn, channels);
     const gpsFreq =
@@ -283,15 +327,7 @@ export async function getLapTelemetrySeries(
   const conn = database.connect();
 
   try {
-    const channelRows = await all<{ channelName: string; frequency: number }>(
-      conn,
-      `SELECT "channelName", "frequency" FROM "channelsList"`
-    );
-    const channels: ChannelMeta[] = channelRows.map((c) => ({
-      name: c.channelName,
-      frequency: c.frequency,
-      unit: "",
-    }));
+    const channels = await fetchChannels(conn);
     const freqOf = (name: string) =>
       channels.find((c) => c.name === name)?.frequency ?? null;
 
@@ -397,15 +433,7 @@ export async function getTelemetrySummary(
   const conn = database.connect();
 
   try {
-    const channelRows = await all<{ channelName: string; frequency: number }>(
-      conn,
-      `SELECT "channelName", "frequency" FROM "channelsList"`
-    );
-    const channels: ChannelMeta[] = channelRows.map((c) => ({
-      name: c.channelName,
-      frequency: c.frequency,
-      unit: "",
-    }));
+    const channels = await fetchChannels(conn);
     const freqOf = (name: string) =>
       channels.find((c) => c.name === name)?.frequency ?? null;
     const gpsFreq = freqOf("GPS Latitude") ?? 10;
