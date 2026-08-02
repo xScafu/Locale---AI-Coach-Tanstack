@@ -93,6 +93,14 @@ attivo un solo record per tabella — attivarne uno *deve* prima disattivare tut
 altri (vedi `activateCar` / `deactivateCars` in `car.repository.ts`). È il meccanismo
 con cui il coach sa di cosa sta parlando.
 
+Anche `setups` ha `isActive`, ma con una differenza: l'unicità è **per auto**, non
+globale. `deactivateSetups` prende quindi un `carId` — ogni auto ha il suo setup attivo.
+
+**Il coach non inventa mai i valori di partenza del setup.** Se l'auto attiva non ha un
+setup attivo, la sezione `===== SETUP =====` gli dice esplicitamente di non proporre
+modifiche e di chiedere invece il caricamento del `.svm`. Senza sapere da dove il pilota
+parte, qualsiasi valore suggerito sarebbe campato in aria.
+
 **Memoria di sessione**: ogni 20 messaggi `services/memory.manager.ts` riassume l'intera
 conversazione via `summary.service.ts` e la scrive in `coach_context.summary`, che
 rientra nel prompt al giro successivo.

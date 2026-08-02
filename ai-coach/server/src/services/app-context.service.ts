@@ -2,6 +2,7 @@ import { getActivePilot } from "../repositories/profile.repository";
 import { getActiveCar } from "../repositories/car.repository";
 import { getActiveTrack } from "../repositories/track.repository";
 import { getSettings } from "../repositories/settings.repository";
+import { getActiveSetupByCar } from "../repositories/setup.repository";
 import { getSessionMemory } from "./memory.service";
 import { searchKnowledgeEntries } from "../repositories/knowledge.repository";
 import { getTelemetryImports } from "../repositories/telemetry.repository";
@@ -49,6 +50,11 @@ export async function loadAppContext(sessionId?: string, message?: string) {
 
   const telemetry = await loadTelemetrySummary(car?.id);
 
+  // Il setup attivo dell'auto attiva: e' la base su cui il coach
+  // propone modifiche. Se manca, il coach deve chiederne il
+  // caricamento invece di inventare valori di partenza.
+  const setup = car?.id ? await getActiveSetupByCar(car.id) : null;
+
   return {
     pilot,
 
@@ -63,5 +69,7 @@ export async function loadAppContext(sessionId?: string, message?: string) {
     knowledge,
 
     telemetry,
+
+    setup,
   };
 }

@@ -103,9 +103,73 @@ function buildTrackSection(track: any) {
   return lines.join("\n");
 }
 
+// I campi del setup con la loro etichetta: elencarli come dati evita
+// tredici righe di stringhe quasi identiche e tiene fuori dal prompt
+// quelli non compilati.
+const SETUP_FIELDS: [string, string][] = [
+  ["brakeBias", "Brake bias"],
+  ["frontRideHeight", "Altezza anteriore"],
+  ["rearRideHeight", "Altezza posteriore"],
+  ["frontCamber", "Camber anteriore"],
+  ["rearCamber", "Camber posteriore"],
+  ["frontToe", "Convergenza anteriore"],
+  ["rearToe", "Convergenza posteriore"],
+  ["frontARB", "Barra antirollio anteriore"],
+  ["rearARB", "Barra antirollio posteriore"],
+  ["frontSpring", "Molla anteriore"],
+  ["rearSpring", "Molla posteriore"],
+  ["diffPreload", "Precarico differenziale"],
+];
+
+function buildSetupSection(setup: any, car: any) {
+  if (!car) {
+    return "Nessuna auto attiva, quindi nessun setup da analizzare.";
+  }
+
+  if (!setup) {
+    // Il coach non deve inventare i valori di partenza: senza un setup
+    // caricato non sa da dove il pilota parte, e qualsiasi modifica
+    // proposta sarebbe campata in aria.
+    return `Nessun setup attivo per questa auto.
+
+NON proporre modifiche al setup e non inventare valori di partenza.
+Se il pilota chiede aiuto sul setup, spiega che ti serve prima il suo
+setup attuale e invitalo a caricarlo con il pulsante di caricamento
+nella scheda Setup, a destra della chat. Il file e' quello con
+estensione .svm esportato da Le Mans Ultimate.`;
+  }
+
+  const lines: string[] = [`Setup attivo: ${setup.name}`];
+
+  for (const [key, label] of SETUP_FIELDS) {
+    const value = setup[key];
+    if (value !== null && value !== undefined) {
+      lines.push(`- ${label}: ${value}`);
+    }
+  }
+
+  if (setup.notes) lines.push(`Note del pilota sul setup: ${setup.notes}`);
+
+  lines.push("");
+  lines.push(
+    "Quando proponi una modifica al setup, parti sempre da questi valori " +
+      "e indica esplicitamente il valore attuale e quello suggerito."
+  );
+
+  return lines.join("\n");
+}
+
 export function buildCoachContext(context: any) {
-  const { pilot, car, track, settings, coachMemory, knowledge, telemetry } =
-    context;
+  const {
+    pilot,
+    car,
+    track,
+    settings,
+    coachMemory,
+    knowledge,
+    telemetry,
+    setup,
+  } = context;
 
   const knowledgeSection =
     knowledge && knowledge.length > 0
@@ -161,6 +225,10 @@ ${car?.notes ?? "-"}
 ===== CIRCUITO =====
 
 ${buildTrackSection(track)}
+
+===== SETUP =====
+
+${buildSetupSection(setup, car)}
 
 ===== TELEMETRIA =====
 

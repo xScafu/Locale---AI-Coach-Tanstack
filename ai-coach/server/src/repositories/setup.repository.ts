@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { db } from "../db";
 import { setups } from "../db/schema";
 
@@ -23,13 +23,51 @@ export type SetupInsert = {
 
 export type SetupUpdate = Partial<Omit<SetupInsert, "id" | "carId">>;
 
+// A differenza di pilots/cars/tracks, dove l'attivo e' uno solo in
+// tutta l'app, qui l'unicita' e' **per auto**: ogni auto ha il proprio
+// setup attivo. Percio' la disattivazione e' sempre limitata al carId.
+export async function deactivateSetups(carId: string) {
+  await db
+    .update(setups)
+    .set({ isActive: false })
+    .where(eq(setups.carId, carId));
+}
+
+export async function activateSetup(id: string) {
+  const setup = await getSetupById(id);
+  if (!setup) return;
+
+  await deactivateSetups(setup.carId);
+
+  await db.update(setups).set({ isActive: true }).where(eq(setups.id, id));
+}
+
+export async function getActiveSetupByCar(carId: string) {
+  const result = await db
+    .select()
+    .from(setups)
+    .where(and(eq(setups.carId, carId), eq(setups.isActive, true)))
+    .orderBy(desc(setups.createdAt))
+    .limit(1);
+
+  return result[0] ?? null;
+}
+
 export async function createSetup(data: SetupInsert) {
+  // Un setup appena creato e' quello che il pilota sta per usare:
+  // diventa attivo, come succede per un pilota appena creato.
+  await deactivateSetups(data.carId);
+
   await db.insert(setups).values(data);
   return data;
 }
 
 export async function getSetupsByCar(carId: string) {
-  return db.select().from(setups).where(eq(setups.carId, carId));
+  return db
+    .select()
+    .from(setups)
+    .where(eq(setups.carId, carId))
+    .orderBy(desc(setups.createdAt));
 }
 
 export async function getSetupById(id: string) {

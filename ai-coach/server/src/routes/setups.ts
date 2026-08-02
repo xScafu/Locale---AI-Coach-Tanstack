@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import {
+  activateSetup,
   createSetup,
   deleteSetup,
   getSetupById,
@@ -119,6 +120,21 @@ setups.put("/:id", async (c) => {
     diffPreload: body.diffPreload ?? null,
     notes: body.notes ?? null,
   });
+
+  return c.json({ ok: true });
+});
+
+// Imposta questo setup come attivo per la sua auto: e' quello che il
+// coach usa come base per proporre modifiche.
+setups.patch("/:id/activate", async (c) => {
+  const id = c.req.param("id");
+
+  const existing = await getSetupById(id);
+  if (!existing) {
+    return c.json({ error: "Setup not found" }, 404);
+  }
+
+  await activateSetup(id);
 
   return c.json({ ok: true });
 });

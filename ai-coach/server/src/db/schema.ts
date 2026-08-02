@@ -189,6 +189,13 @@ export const setups = sqliteTable("setups", {
 
   notes: text("notes"),
 
+  // Come pilots/cars/tracks, ma l'unicita' e' **per auto**: ogni auto ha
+  // il suo setup attivo, ed e' quello che il coach usa come base per
+  // suggerire modifiche.
+  isActive: integer("is_active", { mode: "boolean" })
+    .$defaultFn(() => true)
+    .notNull(),
+
   createdAt: integer("created_at")
     .$defaultFn(() => Math.floor(Date.now() / 1000))
     .notNull(),

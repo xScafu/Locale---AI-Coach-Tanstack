@@ -43,6 +43,13 @@
       "when": 1785453202660,
       "tag": "0005_robust_nomad",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1785666629697,
+      "tag": "0006_legal_norrin_radd",
+      "breakpoints": true
     }
   ]
 }
