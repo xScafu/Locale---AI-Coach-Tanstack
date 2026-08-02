@@ -45,6 +45,9 @@ chat.post("/", async (c) => {
   return c.json({
     sessionId,
     answer: result.text,
+    // Modifiche al setup proposte in questa risposta, gia' strutturate:
+    // la scheda Setup le mostra come "attuale -> suggerito".
+    setupChanges: result.setupChanges,
     usage: result.usage,
   });
 });

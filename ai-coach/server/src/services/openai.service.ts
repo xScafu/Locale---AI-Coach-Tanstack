@@ -37,17 +37,131 @@ function isUnsupportedParam(error: unknown, param: string) {
   );
 }
 
+// L'output strutturato non e' supportato da tutti i modelli, e il
+// modello e' scelto dall'utente in Impostazioni. Se l'API lo rifiuta si
+// riprova senza: si perdono i suggerimenti strutturati, ma la chat
+// continua a funzionare.
+function isUnsupportedFormat(error: unknown) {
+  if (!(error instanceof OpenAI.APIError) || error.status !== 400) return false;
+
+  const param = error.param ?? "";
+  const message = error.message ?? "";
+
+  return (
+    param.startsWith("text") ||
+    /json_schema|response_format|structured output/i.test(message)
+  );
+}
+
 async function createResponse(params: ResponseParams) {
   try {
     return await client.responses.create(params);
   } catch (error) {
-    if (params.temperature === undefined) throw error;
-    if (!isUnsupportedParam(error, "temperature")) throw error;
+    if (params.temperature !== undefined && isUnsupportedParam(error, "temperature")) {
+      const { temperature: _ignored, ...withoutTemperature } = params;
+      return await createResponse(withoutTemperature);
+    }
 
-    const { temperature: _ignored, ...withoutTemperature } = params;
+    if (params.text !== undefined && isUnsupportedFormat(error)) {
+      const { text: _ignored, ...withoutFormat } = params;
+      return await createResponse(withoutFormat);
+    }
 
-    return await client.responses.create(withoutTemperature);
+    throw error;
   }
+}
+
+// I campi del setup che il coach puo' proporre di modificare. Sono gli
+// stessi della tabella setups: l'enum nello schema impedisce al modello
+// di inventare nomi che poi il client non saprebbe mappare su nulla.
+export const SETUP_CHANGE_FIELDS = [
+  "brakeBias",
+  "frontRideHeight",
+  "rearRideHeight",
+  "frontCamber",
+  "rearCamber",
+  "frontToe",
+  "rearToe",
+  "frontARB",
+  "rearARB",
+  "frontSpring",
+  "rearSpring",
+  "diffPreload",
+] as const;
+
+export type SetupChange = {
+  field: (typeof SETUP_CHANGE_FIELDS)[number];
+  currentValue: number | null;
+  suggestedValue: number;
+  reason: string;
+};
+
+// Schema della risposta: la prosa resta in "reply", le modifiche
+// proposte arrivano gia' strutturate in "setupChanges". Con strict
+// l'API garantisce la forma, quindi il client non deve estrarre numeri
+// dal testo libero — che era l'alternativa fragile.
+const COACH_RESPONSE_FORMAT = {
+  type: "json_schema" as const,
+  name: "coach_reply",
+  strict: true,
+  schema: {
+    type: "object",
+    properties: {
+      reply: {
+        type: "string",
+        description:
+          "La risposta al pilota, in italiano, formattata in markdown.",
+      },
+      setupChanges: {
+        type: "array",
+        description:
+          "Modifiche concrete al setup attivo. Vuoto se non se ne propongono o se non c'e' un setup attivo.",
+        items: {
+          type: "object",
+          properties: {
+            field: { type: "string", enum: [...SETUP_CHANGE_FIELDS] },
+            currentValue: {
+              type: ["number", "null"],
+              description: "Valore attuale nel setup attivo, null se assente.",
+            },
+            suggestedValue: { type: "number" },
+            reason: {
+              type: "string",
+              description: "Perche' questa modifica, in una frase.",
+            },
+          },
+          required: ["field", "currentValue", "suggestedValue", "reason"],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ["reply", "setupChanges"],
+    additionalProperties: false,
+  },
+};
+
+function parseCoachPayload(raw: string): {
+  reply: string;
+  setupChanges: SetupChange[];
+} {
+  try {
+    const parsed = JSON.parse(raw);
+
+    if (typeof parsed?.reply === "string") {
+      return {
+        reply: parsed.reply,
+        setupChanges: Array.isArray(parsed.setupChanges)
+          ? parsed.setupChanges
+          : [],
+      };
+    }
+  } catch {
+    // Non era JSON: si ricade sul testo cosi' com'e'.
+  }
+
+  // Se il modello ignora lo schema, o l'API lo rifiuta, meglio una
+  // risposta senza suggerimenti strutturati che una chat rotta.
+  return { reply: raw, setupChanges: [] };
 }
 
 export async function askCoach(message: string, sessionId?: string) {
@@ -75,6 +189,8 @@ export async function askCoach(message: string, sessionId?: string) {
     ...(supportsTemperature(model)
       ? { temperature: context.settings?.temperature ?? 0.7 }
       : {}),
+
+    text: { format: COACH_RESPONSE_FORMAT },
   });
 
   let text = response.output_text ?? "";
@@ -92,6 +208,10 @@ export async function askCoach(message: string, sessionId?: string) {
     (response as any).status === "incomplete" &&
     (response as any).incomplete_details?.reason === "max_output_tokens";
 
+  const payload = parseCoachPayload(text);
+
+  text = payload.reply;
+
   if (!text) {
     text = truncated
       ? "Ho esaurito il budget di risposta prima di completare la risposta. Prova a riformulare la domanda in modo più mirato, oppure alza 'maxOutputTokens' nelle impostazioni."
@@ -100,6 +220,7 @@ export async function askCoach(message: string, sessionId?: string) {
 
   return {
     text,
+    setupChanges: payload.setupChanges,
     usage: response.usage,
     truncated,
   };

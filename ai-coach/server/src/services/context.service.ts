@@ -132,7 +132,8 @@ function buildSetupSection(setup: any, car: any) {
     // proposta sarebbe campata in aria.
     return `Nessun setup attivo per questa auto.
 
-NON proporre modifiche al setup e non inventare valori di partenza.
+NON proporre modifiche al setup, non inventare valori di partenza e
+lascia setupChanges vuoto.
 Se il pilota chiede aiuto sul setup, spiega che ti serve prima il suo
 setup attuale e invitalo a caricarlo con il pulsante di caricamento
 nella scheda Setup, a destra della chat. Il file e' quello con
@@ -153,7 +154,12 @@ estensione .svm esportato da Le Mans Ultimate.`;
   lines.push("");
   lines.push(
     "Quando proponi una modifica al setup, parti sempre da questi valori " +
-      "e indica esplicitamente il valore attuale e quello suggerito."
+      "e indica esplicitamente il valore attuale e quello suggerito.\n" +
+      "Riporta le stesse modifiche anche nel campo setupChanges della " +
+      "risposta, una voce per ogni valore che cambi, con currentValue " +
+      "preso dall'elenco qui sopra (null se il campo non e' compilato). " +
+      "L'interfaccia le mostra al pilota come modifiche applicabili con " +
+      "un click, quindi devono essere numeri concreti, non intervalli."
   );
 
   return lines.join("\n");
