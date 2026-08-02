@@ -1,9 +1,31 @@
+import type { Track } from "@/services/track.api";
+
 const API_URL = "http://localhost:3001";
 
+export type DashboardPilot = {
+  id: string;
+  name: string;
+  level: string | null;
+  experience: string | null;
+  drivingStyle: string | null;
+};
+
+export type DashboardCar = {
+  id: string;
+  manufacturer: string | null;
+  name: string;
+  simulator: string | null;
+  category: string | null;
+  notes: string | null;
+};
+
 export type DashboardData = {
-  pilot: { name: string; level: string | null } | null;
-  car: { manufacturer: string | null; name: string } | null;
-  track: { name: string; country: string | null } | null;
+  pilot: DashboardPilot | null;
+  // La route restituisce la riga completa del circuito attivo, profilo
+  // curve incluso: la chat lo usa per la card di contesto senza dover
+  // interrogare /api/tracks a parte.
+  car: DashboardCar | null;
+  track: Track | null;
   memory: string;
   stats: { messages: number; tokens: number; cost: number };
 };
