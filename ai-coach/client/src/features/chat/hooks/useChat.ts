@@ -1,9 +1,12 @@
+import { useQueryClient } from "@tanstack/react-query";
+
 import { useChatStore } from "../store/chat.store";
 
 import { createSession, sendMessage } from "../../../lib/api";
 
 export function useChat() {
   const { messages, addMessage, sessionId, setSession } = useChatStore();
+  const queryClient = useQueryClient();
 
   async function send(text: string) {
     // Prima non c'era nessun punto in cui una sessione venisse creata:
@@ -38,6 +41,11 @@ export function useChat() {
       tokens: response.usage?.total_tokens,
       createdAt: Date.now(),
     });
+
+    // La scheda Setup rilegge i suggerimenti dallo storico messaggi:
+    // senza questa invalidazione mostrerebbe ancora quelli precedenti
+    // finche' non si ricarica la pagina.
+    await queryClient.invalidateQueries({ queryKey: ["setup-suggestions"] });
   }
 
   return {

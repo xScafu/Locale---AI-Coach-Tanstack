@@ -1,0 +1,1 @@
+ALTER TABLE `messages` ADD `setup_changes` text;

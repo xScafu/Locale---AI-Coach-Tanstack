@@ -48,6 +48,13 @@ export const messages = sqliteTable("messages", {
 
   outputTokens: integer("output_tokens"),
 
+  // JSON delle modifiche al setup proposte in questa risposta, cosi'
+  // come le ha restituite il modello (vedi SetupChange in
+  // openai.service.ts). Persistite qui perche' la chat lato client vive
+  // solo in memoria: senza, i suggerimenti sparirebbero a ogni ricarica
+  // della pagina.
+  setupChanges: text("setup_changes"),
+
   createdAt: integer("created_at")
     .notNull()
     .$defaultFn(() => Math.floor(Date.now() / 1000)),

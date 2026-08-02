@@ -10,6 +10,7 @@ import {
 } from "../repositories/setup.repository";
 
 import { parseSvmFile } from "../services/setup-import.service";
+import { getLatestSetupChanges } from "../repositories/message.repository";
 
 const setups = new Hono();
 
@@ -40,6 +41,26 @@ setups.post("/import", async (c) => {
     keyValues: parsed.keyValues,
     suggestions: parsed.suggestions,
   });
+});
+
+// Ultime modifiche proposte dal coach, rilette dallo storico messaggi.
+// Registrata PRIMA di "/:id", altrimenti Hono interpreta "suggestions"
+// come un id di setup.
+setups.get("/suggestions", async (c) => {
+  const message = await getLatestSetupChanges();
+
+  if (!message?.setupChanges) {
+    return c.json({ changes: [], createdAt: null });
+  }
+
+  try {
+    return c.json({
+      changes: JSON.parse(message.setupChanges),
+      createdAt: message.createdAt,
+    });
+  } catch {
+    return c.json({ changes: [], createdAt: null });
+  }
 });
 
 setups.get("/", async (c) => {

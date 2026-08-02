@@ -11,9 +11,34 @@ export type GarageCar = {
   isActive?: boolean;
 };
 
+// I campi numerici del setup che il coach puo' proporre di cambiare:
+// stessa lista dell'enum nello schema lato server.
+export const SETUP_FIELD_LABELS: Record<string, string> = {
+  brakeBias: "Brake bias",
+  frontRideHeight: "Altezza ant.",
+  rearRideHeight: "Altezza post.",
+  frontCamber: "Camber ant.",
+  rearCamber: "Camber post.",
+  frontToe: "Convergenza ant.",
+  rearToe: "Convergenza post.",
+  frontARB: "Barra ant.",
+  rearARB: "Barra post.",
+  frontSpring: "Molla ant.",
+  rearSpring: "Molla post.",
+  diffPreload: "Precarico diff.",
+};
+
+export type SetupChange = {
+  field: keyof typeof SETUP_FIELD_LABELS;
+  currentValue: number | null;
+  suggestedValue: number;
+  reason: string;
+};
+
 export type Setup = {
   id: string;
   carId: string;
+  isActive?: boolean;
   name: string;
   brakeBias: number | null;
   frontRideHeight: number | null;
@@ -167,6 +192,31 @@ export async function updateSetup(
   });
 
   return response.json();
+}
+
+// Imposta questo setup come attivo per la sua auto: e' quello che il
+// coach usa come base per proporre modifiche.
+export async function activateSetup(setupId: string) {
+  const response = await fetch(`${API_URL}/api/setups/${setupId}/activate`, {
+    method: "PATCH",
+  });
+
+  return response.json();
+}
+
+// Ultime modifiche proposte dal coach, rilette dallo storico messaggi:
+// la chat lato client non conserva nulla dopo una ricarica.
+export async function getSetupSuggestions() {
+  const response = await fetch(`${API_URL}/api/setups/suggestions`);
+
+  if (!response.ok) {
+    throw new Error("Impossibile leggere i suggerimenti del coach");
+  }
+
+  return response.json() as Promise<{
+    changes: SetupChange[];
+    createdAt: number | null;
+  }>;
 }
 
 // Prima mancava del tutto.

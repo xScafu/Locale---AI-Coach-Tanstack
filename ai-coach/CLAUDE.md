@@ -101,6 +101,21 @@ setup attivo, la sezione `===== SETUP =====` gli dice esplicitamente di non prop
 modifiche e di chiedere invece il caricamento del `.svm`. Senza sapere da dove il pilota
 parte, qualsiasi valore suggerito sarebbe campato in aria.
 
+**Risposta strutturata.** `askCoach` usa un JSON Schema (`COACH_RESPONSE_FORMAT`): la
+prosa sta in `reply`, le modifiche al setup in `setupChanges`, già tipizzate. L'enum dei
+campi coincide con le colonne di `setups`. Estrarre i numeri dal testo libero era
+l'alternativa, e si rompe appena il coach scrive "un paio di punti indietro".
+
+Due fallback, perché il modello lo sceglie l'utente in Impostazioni: `createResponse`
+riprova senza `text.format` se l'API lo rifiuta, e `parseCoachPayload` ricade sul testo
+grezzo se la risposta non è il JSON atteso. In entrambi i casi si perdono i suggerimenti,
+non la chat.
+
+`setupChanges` viene persistito su `messages.setup_changes`, e `GET /api/setups/suggestions`
+restituisce l'ultimo non vuoto. Serve perché **la chat lato client vive solo in memoria**
+(`features/chat/store/chat.store.ts` non carica lo storico): senza persistenza i
+suggerimenti sparirebbero a ogni ricarica della pagina.
+
 **Memoria di sessione**: ogni 20 messaggi `services/memory.manager.ts` riassume l'intera
 conversazione via `summary.service.ts` e la scrive in `coach_context.summary`, che
 rientra nel prompt al giro successivo.

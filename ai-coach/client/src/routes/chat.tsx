@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import ChatWindow from "@/features/chat/components/ChatWindow";
 import ChatInput from "@/features/chat/components/ChatInput";
 import ChatContextPanel from "@/features/chat/components/ChatContextPanel";
+import ChatSetupPanel from "@/features/chat/components/ChatSetupPanel";
 import { Card } from "@/components/ui/card";
 
 export const Route = createFileRoute("/chat")({
@@ -19,8 +20,11 @@ function ChatPage() {
         </p>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,17rem)_minmax(0,1fr)]">
-        {/* Sotto lg le card di contesto finiscono sopra la chat, dove
+      {/* Tre colonne solo da 2xl: a 1280px, tolti i 256px della
+          sidebar, alla chat resterebbero 368px di larghezza, troppo
+          pochi per leggere una risposta lunga. */}
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,17rem)_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,17rem)_minmax(0,1fr)_minmax(0,19rem)]">
+        {/* Sotto lg le colonne laterali finiscono sopra la chat, dove
             occuperebbero tutto lo schermo prima di arrivare ai
             messaggi: in colonna stretta si accettano, a schermo pieno
             no. Per questo l'ordine cambia con il breakpoint. */}
@@ -36,6 +40,11 @@ function ChatPage() {
 
           <ChatInput />
         </Card>
+
+        {/* Sotto 2xl scende in fondo occupando tutta la larghezza. */}
+        <aside className="order-3 lg:col-span-2 2xl:col-span-1 2xl:max-h-[calc(100vh-13rem)] 2xl:overflow-y-auto">
+          <ChatSetupPanel />
+        </aside>
       </div>
     </div>
   );

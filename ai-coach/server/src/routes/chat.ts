@@ -36,6 +36,7 @@ chat.post("/", async (c) => {
     content: result.text,
     inputTokens: result.usage?.input_tokens,
     outputTokens: result.usage?.output_tokens,
+    setupChanges: JSON.stringify(result.setupChanges ?? []),
   });
 
   // Prima questa funzione non veniva mai chiamata: il riassunto

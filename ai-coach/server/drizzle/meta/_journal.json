@@ -50,6 +50,13 @@
       "when": 1785666629697,
       "tag": "0006_legal_norrin_radd",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1785667629229,
+      "tag": "0007_unknown_havok",
+      "breakpoints": true
     }
   ]
 }
