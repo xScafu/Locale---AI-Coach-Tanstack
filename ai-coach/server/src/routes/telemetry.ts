@@ -234,12 +234,14 @@ telemetry.get("/:id/laps", async (c) => {
   }
 });
 
-telemetry.get("/:id/laps/:lapNumber", async (c) => {
+// Il parametro e' la POSIZIONE del giro nell'elenco restituito da
+// /laps, non il suo numero: lapNumber non e' univoco.
+telemetry.get("/:id/laps/:lapIndex", async (c) => {
   const id = c.req.param("id");
-  const lapNumber = Number(c.req.param("lapNumber"));
+  const lapIndex = Number(c.req.param("lapIndex"));
 
-  if (Number.isNaN(lapNumber)) {
-    return c.json({ error: "lapNumber non valido" }, 400);
+  if (!Number.isInteger(lapIndex) || lapIndex < 0) {
+    return c.json({ error: "lapIndex non valido" }, 400);
   }
 
   const item = await getTelemetryImportById(id);
@@ -248,7 +250,7 @@ telemetry.get("/:id/laps/:lapNumber", async (c) => {
   }
 
   try {
-    const points = await getLapTelemetrySeries(item.filePath, lapNumber);
+    const points = await getLapTelemetrySeries(item.filePath, lapIndex);
     return c.json({ points });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Errore sconosciuto";

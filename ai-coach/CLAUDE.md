@@ -278,7 +278,11 @@ curva e finisce tra i "massimi personali". Il file espone `SurfaceTypes` (5 Hz) 
 implementato.
 
 Attenzione anche a `lapNumber`: viene da `labelForTime` sugli eventi `Lap` e **non è
-univoco**, più segmenti possono condividere la stessa etichetta.
+univoco** — in un file reale tutti e sette i giri avevano `lapNumber` 8. Per questo un
+giro si seleziona sempre per **`index`** (la posizione restituita da `getLaps`), mai per
+numero: `getLapTelemetrySeries` usava `find()` sul numero, quindi con etichette ripetute
+sei giri su sette erano irraggiungibili e mostravano i dati del primo. In interfaccia i
+numeri ripetuti ricevono un suffisso (`8a`, `8b`) per restare distinguibili.
 
 ### Client (`client/src`) — TanStack Router (file-based)
 

@@ -308,7 +308,11 @@ export async function computeLapSegments(
   return segments;
 }
 
-export type LapInfo = { lapNumber: number; startTs: number };
+// "index" e' la posizione del segmento nel giro-per-giro del file ed e'
+// l'unico identificatore davvero univoco: lapNumber viene da
+// labelForTime sugli eventi "Lap" e piu' segmenti possono condividere
+// la stessa etichetta.
+export type LapInfo = { index: number; lapNumber: number; startTs: number };
 
 export async function getLaps(filePath: string): Promise<LapInfo[]> {
   const database = await openDb(filePath);
@@ -321,7 +325,8 @@ export async function getLaps(filePath: string): Promise<LapInfo[]> {
     const gpsFreq =
       channels.find((c) => c.name === "GPS Latitude")?.frequency ?? 10;
 
-    return segments.map((s) => ({
+    return segments.map((s, index) => ({
+      index,
       lapNumber: s.lapNumber,
       startTs: s.startIdx / gpsFreq,
     }));
@@ -340,9 +345,12 @@ export type LapTelemetryPoint = {
   lapDistM: number | null;
 };
 
+// Il giro si seleziona per POSIZIONE, non per lapNumber: quest'ultimo
+// non e' univoco, e con find() i giri che condividevano l'etichetta
+// erano irraggiungibili — cliccandoli si vedevano i dati del primo.
 export async function getLapTelemetrySeries(
   filePath: string,
-  lapNumber: number
+  lapIndex: number
 ): Promise<LapTelemetryPoint[]> {
   const database = await openDb(filePath);
   const conn = database.connect();
@@ -353,10 +361,10 @@ export async function getLapTelemetrySeries(
       channels.find((c) => c.name === name)?.frequency ?? null;
 
     const segments = await computeLapSegments(conn, channels);
-    const segment = segments.find((s) => s.lapNumber === lapNumber);
+    const segment = segments[lapIndex];
 
     if (!segment) {
-      throw new Error(`Giro ${lapNumber} non trovato nel file`);
+      throw new Error(`Giro in posizione ${lapIndex} non trovato nel file`);
     }
 
     const gpsFreq = freqOf("GPS Latitude") ?? 10;
