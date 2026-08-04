@@ -92,10 +92,9 @@ export async function deleteTelemetryImport(id: string) {
   return response.json();
 }
 
-// "index" e' la posizione nel file ed e' l'unico valore univoco:
-// lapNumber viene dalle etichette degli eventi "Lap" e piu' giri
-// possono condividerlo.
-export type Lap = { index: number; lapNumber: number; startTs: number };
+// I giri sono numerati in sequenza da 1 nell'ordine del file, non con
+// il contatore del simulatore: quello non e' univoco.
+export type Lap = { lapNumber: number; startTs: number };
 
 export async function getTelemetryLaps(id: string) {
   const response = await fetch(`${API_URL}/api/telemetry/${id}/laps`);
@@ -112,9 +111,9 @@ export type TelemetryPoint = {
   lapDistM: number | null;
 };
 
-export async function getLapTelemetry(id: string, lapIndex: number) {
+export async function getLapTelemetry(id: string, lapNumber: number) {
   const response = await fetch(
-    `${API_URL}/api/telemetry/${id}/laps/${lapIndex}`
+    `${API_URL}/api/telemetry/${id}/laps/${lapNumber}`
   );
   return response.json() as Promise<{ points: TelemetryPoint[] }>;
 }

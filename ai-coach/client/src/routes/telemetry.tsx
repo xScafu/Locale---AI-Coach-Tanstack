@@ -12,7 +12,6 @@ import {
   getTelemetryLaps,
   runTelemetryQuery,
   uploadTelemetry,
-  type Lap,
   type TelemetryImport,
   type TelemetryPoint,
 } from "@/services/telemetry.api";
@@ -72,27 +71,6 @@ type QueryRow = Record<string, unknown>;
 // dentro telemetry_imports.tables lato server.
 type TableInfo = { name: string; rowCount: number };
 
-// Piu' giri possono avere lo stesso lapNumber: mostrarli entrambi come
-// "8" li renderebbe indistinguibili. Quelli ripetuti prendono un
-// suffisso progressivo (8a, 8b), gli unici restano come sono.
-function lapLabel(laps: Lap[] | undefined, lap: Lap) {
-  if (!laps) return String(lap.lapNumber);
-
-  const sameNumber = laps.filter((l) => l.lapNumber === lap.lapNumber);
-  if (sameNumber.length < 2) return String(lap.lapNumber);
-
-  const position = sameNumber.findIndex((l) => l.index === lap.index);
-
-  return `${lap.lapNumber}${String.fromCharCode(97 + position)}`;
-}
-
-function lapLabelByIndex(laps: Lap[] | undefined, index: number | null) {
-  if (!laps || index === null) return "";
-
-  const lap = laps.find((l) => l.index === index);
-
-  return lap ? lapLabel(laps, lap) : "";
-}
 
 // Proietta insieme sagoma di riferimento + giro corrente sullo stesso
 // piano in metri: condividono origine e scala, quindi restano allineati
@@ -346,8 +324,8 @@ function Telemetry() {
   const [selectedImport, setSelectedImport] = useState<TelemetryImport | null>(
     null
   );
-  // Si seleziona la POSIZIONE del giro, non il suo numero: lapNumber
-  // non e' univoco e con due giri "8" il secondo era irraggiungibile.
+  // I giri sono numerati in sequenza da 1, quindi il numero identifica
+  // gia' il giro in modo univoco.
   const [selectedLap, setSelectedLap] = useState<number | null>(null);
   const [cursorIndex, setCursorIndex] = useState(0);
   const [trackId, setTrackId] = useState("");
@@ -622,18 +600,18 @@ function Telemetry() {
               <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                 {lapsQuery.data?.laps?.map((lap) => (
                   <Button
-                    key={lap.index}
+                    key={lap.lapNumber}
                     variant={
-                      selectedLap === lap.index ? "default" : "outline"
+                      selectedLap === lap.lapNumber ? "default" : "outline"
                     }
                     size="sm"
                     className="font-mono"
                     onClick={() => {
-                      setSelectedLap(lap.index);
+                      setSelectedLap(lap.lapNumber);
                       setCursorIndex(0);
                     }}
                   >
-                    {lapLabel(lapsQuery.data!.laps, lap)}
+                    {lap.lapNumber}
                   </Button>
                 ))}
               </div>
@@ -675,10 +653,7 @@ function Telemetry() {
       {selectedLap !== null && (
         <Card>
           <CardHeader className="gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle>
-              Giro {lapLabelByIndex(lapsQuery.data?.laps, selectedLap)} — mappa e
-              canali
-            </CardTitle>
+            <CardTitle>Giro {selectedLap} — mappa e canali</CardTitle>
 
             <div className="flex flex-wrap items-center gap-2">
               <Select

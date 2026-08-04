@@ -277,12 +277,16 @@ curva e finisce tra i "massimi personali". Il file espone `SurfaceTypes` (5 Hz) 
 `Track Edge` (10 Hz), che permetterebbero di scartare i giri fuori pista: non è ancora
 implementato.
 
-Attenzione anche a `lapNumber`: viene da `labelForTime` sugli eventi `Lap` e **non è
-univoco** — in un file reale tutti e sette i giri avevano `lapNumber` 8. Per questo un
-giro si seleziona sempre per **`index`** (la posizione restituita da `getLaps`), mai per
-numero: `getLapTelemetrySeries` usava `find()` sul numero, quindi con etichette ripetute
-sei giri su sette erano irraggiungibili e mostravano i dati del primo. In interfaccia i
-numeri ripetuti ricevono un suffisso (`8a`, `8b`) per restare distinguibili.
+**I giri sono numerati da `computeLapSegments` in sequenza, 1, 2, 3**, nell'ordine in cui
+compaiono nel file. Il numero è quindi anche la posizione, e `getLapTelemetrySeries`
+indicizza direttamente (`segments[lapNumber - 1]`).
+
+Prima l'etichetta veniva dagli eventi `Lap` del simulatore tramite `labelForTime`, ma quel
+contatore non riparte a ogni sessione e **non è univoco**: in un file reale tutti e sette
+i giri risultavano "giro 8". Le conseguenze erano due, entrambe invisibili a occhio: la
+selezione con `find()` sul numero rendeva irraggiungibili sei giri su sette (mostravano i
+dati del primo), e nel riferimento del circuito ogni settore migliore riportava lo stesso
+inutile "giro 8".
 
 ### Client (`client/src`) — TanStack Router (file-based)
 

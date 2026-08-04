@@ -254,8 +254,6 @@ export async function computeLapSegments(
   channels: ChannelMeta[]
 ): Promise<LapSegment[]> {
   const lapDist = await fetchWholeChannel(conn, "Lap Dist");
-  const gpsFreq =
-    channels.find((c) => c.name === "GPS Latitude")?.frequency ?? 10;
 
   const DROP_THRESHOLD_M = 500;
   const resetIndices: number[] = [];
@@ -268,27 +266,14 @@ export async function computeLapSegments(
 
   const boundaries = [0, ...resetIndices, lapDist.length];
 
-  const lapEventRows = await all<{
-    ts: number | bigint;
-    value: number | bigint;
-  }>(conn, `SELECT "ts", "value" FROM "Lap" ORDER BY "ts" ASC`);
-
-  // `value` diventa il lapNumber restituito in JSON dalla route /laps:
-  // convertito qui una volta sola invece che in ogni chiamante.
-  const lapEvents = lapEventRows.map((e) => ({
-    ts: Number(e.ts),
-    value: Number(e.value),
-  }));
-
-  function labelForTime(t: number): number {
-    let label = lapEvents[0]?.value ?? 0;
-    for (const ev of lapEvents) {
-      if (ev.ts <= t) label = ev.value;
-      else break;
-    }
-    return label;
-  }
-
+  // I giri si numerano in sequenza, 1, 2, 3, nell'ordine in cui
+  // compaiono nel file.
+  //
+  // Prima l'etichetta veniva dagli eventi "Lap" del simulatore, ma quel
+  // contatore non riparte da zero a ogni sessione e non e' univoco: in
+  // un file reale TUTTI e sette i giri risultavano "giro 8". Oltre a
+  // essere illeggibile, rendeva impossibile distinguerli ovunque il
+  // numero venisse mostrato.
   const segments: LapSegment[] = [];
 
   for (let k = 0; k < boundaries.length - 1; k++) {
@@ -296,10 +281,8 @@ export async function computeLapSegments(
     const endIdx = boundaries[k + 1] - 1;
     if (endIdx <= startIdx) continue;
 
-    const startTime = startIdx / gpsFreq;
-
     segments.push({
-      lapNumber: labelForTime(startTime),
+      lapNumber: segments.length + 1,
       startIdx,
       endIdx,
     });
@@ -308,11 +291,7 @@ export async function computeLapSegments(
   return segments;
 }
 
-// "index" e' la posizione del segmento nel giro-per-giro del file ed e'
-// l'unico identificatore davvero univoco: lapNumber viene da
-// labelForTime sugli eventi "Lap" e piu' segmenti possono condividere
-// la stessa etichetta.
-export type LapInfo = { index: number; lapNumber: number; startTs: number };
+export type LapInfo = { lapNumber: number; startTs: number };
 
 export async function getLaps(filePath: string): Promise<LapInfo[]> {
   const database = await openDb(filePath);
@@ -325,8 +304,7 @@ export async function getLaps(filePath: string): Promise<LapInfo[]> {
     const gpsFreq =
       channels.find((c) => c.name === "GPS Latitude")?.frequency ?? 10;
 
-    return segments.map((s, index) => ({
-      index,
+    return segments.map((s) => ({
       lapNumber: s.lapNumber,
       startTs: s.startIdx / gpsFreq,
     }));
@@ -345,12 +323,11 @@ export type LapTelemetryPoint = {
   lapDistM: number | null;
 };
 
-// Il giro si seleziona per POSIZIONE, non per lapNumber: quest'ultimo
-// non e' univoco, e con find() i giri che condividevano l'etichetta
-// erano irraggiungibili — cliccandoli si vedevano i dati del primo.
+// I giri sono numerati in sequenza da 1, quindi il numero e' anche la
+// loro posizione: si indicizza direttamente invece di cercarli.
 export async function getLapTelemetrySeries(
   filePath: string,
-  lapIndex: number
+  lapNumber: number
 ): Promise<LapTelemetryPoint[]> {
   const database = await openDb(filePath);
   const conn = database.connect();
@@ -361,10 +338,10 @@ export async function getLapTelemetrySeries(
       channels.find((c) => c.name === name)?.frequency ?? null;
 
     const segments = await computeLapSegments(conn, channels);
-    const segment = segments[lapIndex];
+    const segment = segments[lapNumber - 1];
 
     if (!segment) {
-      throw new Error(`Giro in posizione ${lapIndex} non trovato nel file`);
+      throw new Error(`Giro ${lapNumber} non trovato nel file`);
     }
 
     const gpsFreq = freqOf("GPS Latitude") ?? 10;
