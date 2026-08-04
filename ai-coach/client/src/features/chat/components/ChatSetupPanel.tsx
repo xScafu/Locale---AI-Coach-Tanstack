@@ -20,8 +20,20 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
-function formatValue(value: number | null | undefined) {
-  return value === null || value === undefined ? "—" : String(value);
+// "FRONTLEFT.CamberSetting" -> "Frontleft · Camber". Il percorso grezzo
+// e' preciso ma illeggibile in una colonna stretta.
+function settingLabel(path: string) {
+  const [section, key] = path.split(".");
+
+  if (!key) return path;
+
+  const readable = key
+    .replace(/Setting$/, "")
+    .replace(/([a-z])([A-Z])/g, "$1 $2");
+
+  const place = section.charAt(0) + section.slice(1).toLowerCase();
+
+  return `${place} · ${readable}`;
 }
 
 function EmptyState({
@@ -128,7 +140,7 @@ function Suggestions({
   onApplied: () => void;
 }) {
   const [selected, setSelected] = useState<string[]>(() =>
-    changes.map((c) => c.field)
+    changes.map((c) => c.setting)
   );
   const [applying, setApplying] = useState(false);
 
@@ -141,7 +153,7 @@ function Suggestions({
   }
 
   async function apply() {
-    const picked = changes.filter((c) => selected.includes(c.field));
+    const picked = changes.filter((c) => selected.includes(c.setting));
     if (picked.length === 0) return;
 
     setApplying(true);
@@ -171,13 +183,13 @@ function Suggestions({
     <div className="space-y-3">
       <div className="space-y-2">
         {changes.map((change) => {
-          const isSelected = selected.includes(change.field);
+          const isSelected = selected.includes(change.setting);
 
           return (
             <button
-              key={change.field}
+              key={change.setting}
               type="button"
-              onClick={() => toggle(change.field)}
+              onClick={() => toggle(change.setting)}
               className={
                 isSelected
                   ? "border-primary bg-primary/5 w-full rounded-lg border p-2.5 text-left transition-colors"
@@ -185,8 +197,8 @@ function Suggestions({
               }
             >
               <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium">
-                  {SETUP_FIELD_LABELS[change.field] ?? change.field}
+                <span className="truncate text-sm font-medium">
+                  {settingLabel(change.setting)}
                 </span>
 
                 <span
@@ -201,13 +213,10 @@ function Suggestions({
                 </span>
               </div>
 
-              <div className="mt-1 flex items-baseline gap-2 font-mono text-sm">
-                <span className="text-muted-foreground">
-                  {formatValue(change.currentValue)}
-                </span>
-                <span className="text-muted-foreground">→</span>
+              <div className="mt-1 font-mono text-sm">
                 <span className="text-primary font-medium">
-                  {change.suggestedValue}
+                  {change.deltaClicks > 0 ? "+" : ""}
+                  {change.deltaClicks} click
                 </span>
               </div>
 

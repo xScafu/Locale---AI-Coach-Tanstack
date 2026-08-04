@@ -71,28 +71,17 @@ async function createResponse(params: ResponseParams) {
   }
 }
 
-// I campi del setup che il coach puo' proporre di modificare. Sono gli
-// stessi della tabella setups: l'enum nello schema impedisce al modello
-// di inventare nomi che poi il client non saprebbe mappare su nulla.
-export const SETUP_CHANGE_FIELDS = [
-  "brakeBias",
-  "frontRideHeight",
-  "rearRideHeight",
-  "frontCamber",
-  "rearCamber",
-  "frontToe",
-  "rearToe",
-  "frontARB",
-  "rearARB",
-  "frontSpring",
-  "rearSpring",
-  "diffPreload",
-] as const;
-
+// Le modifiche viaggiano come delta di CLICK su una regolazione del
+// file .svm, non come valore finale: l'interfaccia del gioco lavora a
+// scatti e la scala indice-valore cambia da auto ad auto, quindi un
+// valore assoluto non sarebbe convertibile.
+//
+// "setting" non e' un enum perche' le regolazioni disponibili dipendono
+// dall'auto: l'elenco valido finisce nel prompt, e applyClicks scarta
+// con motivazione quelle inesistenti o non regolabili.
 export type SetupChange = {
-  field: (typeof SETUP_CHANGE_FIELDS)[number];
-  currentValue: number | null;
-  suggestedValue: number;
+  setting: string;
+  deltaClicks: number;
   reason: string;
 };
 
@@ -115,22 +104,26 @@ const COACH_RESPONSE_FORMAT = {
       setupChanges: {
         type: "array",
         description:
-          "Modifiche concrete al setup attivo. Vuoto se non se ne propongono o se non c'e' un setup attivo.",
+          "Modifiche al setup attivo, espresse in click. Vuoto se non se ne propongono o se non c'e' un setup attivo.",
         items: {
           type: "object",
           properties: {
-            field: { type: "string", enum: [...SETUP_CHANGE_FIELDS] },
-            currentValue: {
-              type: ["number", "null"],
-              description: "Valore attuale nel setup attivo, null se assente.",
+            setting: {
+              type: "string",
+              description:
+                "Percorso esatto della regolazione, es. FRONTLEFT.CamberSetting, preso dall'elenco nel contesto.",
             },
-            suggestedValue: { type: "number" },
+            deltaClicks: {
+              type: "integer",
+              description:
+                "Di quanti scatti muovere l'indice: negativo per scendere.",
+            },
             reason: {
               type: "string",
               description: "Perche' questa modifica, in una frase.",
             },
           },
-          required: ["field", "currentValue", "suggestedValue", "reason"],
+          required: ["setting", "deltaClicks", "reason"],
           additionalProperties: false,
         },
       },

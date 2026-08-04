@@ -127,12 +127,39 @@ colonne numeriche, mentre un setup di LMU contiene molti più parametri: senza l
 non si potrebbe produrre un file caricabile nel simulatore. Le versioni derivate lo
 ereditano.
 
-**`GET /api/setups/:id/export` restituisce il file di partenza così com'è, senza
-riscrivere i valori modificati.** In un `.svm` il valore che LMU legge è un indice
-(`CamberSetting=14`) mentre il numero leggibile sta nel commento (`//-3.4 deg`): senza
-conoscere il passo della scala non si risale dall'uno all'altro, e un file con i commenti
-aggiornati ma gli indici vecchi verrebbe caricato con i valori vecchi — peggio che non
-esportarlo. Per chiudere il cerchio servirebbe la tabella indice↔valore per auto e campo.
+### Il formato `.svm` e il ragionamento a click
+
+`services/svm.service.ts` è l'unico posto che legge e riscrive i file di setup.
+
+Il valore che LMU legge è un **indice** (`CamberSetting=30`), il numero leggibile sta nel
+commento (`//-1.0 deg`), e la scala che li lega **cambia per auto e per posizione**: sulla
+BMW l'indice 30 davanti vale −1.0° e l'indice 20 dietro vale sempre −1.0°. Da un file non
+si può quindi convertire un valore fisico nel suo indice.
+
+Non serve: **l'interfaccia del gioco lavora a click**, ogni scatto è un `+1`/`-1`
+sull'indice. Tutte le modifiche viaggiano perciò come `deltaClicks`, che si sommano
+all'indice senza conoscere la scala. Il coach propone click, non valori finali — vedi lo
+schema di `setupChanges` in `openai.service.ts`.
+
+Conseguenze pratiche:
+
+- `applyClicks` riscrive **solo** le righe toccate: su un file di 205 righe ne cambia 3.
+  Il commento vecchio descriverebbe il valore precedente, quindi viene sostituito con
+  `//era -1.4 deg (-2 click)`; il gioco legge l'indice e ricalcola l'etichetta da sé.
+- Il limite **superiore** della scala non è nel file: si può solo impedire di scendere
+  sotto zero, al resto pensa il gioco quando carica.
+- Sulle auto con `Symmetric=1` i lati vengono accorpati in `FRONT.*` / `REAR.*` e
+  riespansi in fase di applicazione: elencarli separati raddoppiava il prompt e invitava
+  a muovere un lato solo, sbilanciando la vettura.
+- `describeAdjustableSettings` scarta le regolazioni non pertinenti alla dinamica
+  (carburante, soste, rapporti del cambio) e quelle marcate `N/A` / `Non-adjustable` /
+  `Detached`. Senza questi due filtri l'elenco passa da 68 a 107 voci, e il modello
+  reasoning ci impiega **oltre cinque minuti** a rispondere.
+
+`POST /api/setups/:id/apply` genera il nuovo `.svm` e lo salva come `sourceSvm` della
+nuova versione, poi rilegge da lì i dodici valori delle colonne. `GET /api/setups/:id/export`
+restituisce quindi sempre `sourceSvm`, che per una versione derivata **contiene già le
+modifiche**.
 
 **Memoria di sessione**: ogni 20 messaggi `services/memory.manager.ts` riassume l'intera
 conversazione via `summary.service.ts` e la scrive in `coach_context.summary`, che

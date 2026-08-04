@@ -103,6 +103,8 @@ function buildTrackSection(track: any) {
   return lines.join("\n");
 }
 
+import { describeAdjustableSettings } from "./svm.service";
+
 // I campi del setup con la loro etichetta: elencarli come dati evita
 // tredici righe di stringhe quasi identiche e tiene fuori dal prompt
 // quelli non compilati.
@@ -142,25 +144,56 @@ estensione .svm esportato da Le Mans Ultimate.`;
 
   const lines: string[] = [`Setup attivo: ${setup.name}`];
 
-  for (const [key, label] of SETUP_FIELDS) {
-    const value = setup[key];
-    if (value !== null && value !== undefined) {
-      lines.push(`- ${label}: ${value}`);
-    }
-  }
-
   if (setup.notes) lines.push(`Note del pilota sul setup: ${setup.notes}`);
 
-  lines.push("");
-  lines.push(
-    "Quando proponi una modifica al setup, parti sempre da questi valori " +
-      "e indica esplicitamente il valore attuale e quello suggerito.\n" +
-      "Riporta le stesse modifiche anche nel campo setupChanges della " +
-      "risposta, una voce per ogni valore che cambi, con currentValue " +
-      "preso dall'elenco qui sopra (null se il campo non e' compilato). " +
-      "L'interfaccia le mostra al pilota come modifiche applicabili con " +
-      "un click, quindi devono essere numeri concreti, non intervalli."
-  );
+  // Con il file .svm originale il coach vede TUTTE le regolazioni
+  // dell'auto — ala, mappe TC, ammortizzatori, migration — non solo le
+  // dodici che l'app tiene in colonne dedicate.
+  if (setup.sourceSvm) {
+    const adjustables = describeAdjustableSettings(setup.sourceSvm);
+
+    lines.push("");
+    lines.push(
+      "Regolazioni disponibili su questa auto, nel formato " +
+        "SEZIONE.Chiave = indice (valore attuale):"
+    );
+    lines.push(...adjustables.map((s) => `- ${s}`));
+
+    lines.push("");
+    lines.push(
+      `L'interfaccia del gioco lavora a CLICK: ogni scatto e' +1 o -1
+sull'indice, e la scala che lega indice e valore leggibile cambia da
+auto ad auto. Non proporre quindi un valore finale, ma di quanti click
+muovere: nel campo setupChanges usa "setting" con il percorso esatto
+preso dall'elenco qui sopra e "deltaClicks" con lo spostamento (negativo
+per scendere). Nella prosa spiega la modifica anche in termini
+comprensibili, citando il valore attuale.
+
+Attenzione al verso: per il camber un indice piu' ALTO significa camber
+MENO negativo. Se non sei certo del verso di una regolazione, dillo
+invece di indovinare.
+
+Sulle auto simmetriche muovi sempre insieme sinistra e destra
+(FRONTLEFT e FRONTRIGHT, REARLEFT e REARRIGHT) con lo stesso delta.`
+    );
+  } else {
+    // Setup creato a mano: restano solo i dodici valori dell'app e non
+    // c'e' modo di generare un file per il simulatore.
+    for (const [key, label] of SETUP_FIELDS) {
+      const value = setup[key];
+      if (value !== null && value !== undefined) {
+        lines.push(`- ${label}: ${value}`);
+      }
+    }
+
+    lines.push("");
+    lines.push(
+      "Questo setup e' stato inserito a mano e non ha un file .svm di " +
+        "origine, quindi non e' esportabile verso il simulatore e non si " +
+        "puo' ragionare a click: lascia setupChanges vuoto e limitati a " +
+        "consigli descrittivi."
+    );
+  }
 
   return lines.join("\n");
 }

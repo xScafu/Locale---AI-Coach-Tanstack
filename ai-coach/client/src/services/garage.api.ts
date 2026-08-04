@@ -28,10 +28,13 @@ export const SETUP_FIELD_LABELS: Record<string, string> = {
   diffPreload: "Precarico diff.",
 };
 
+// Le modifiche sono delta di click su una regolazione del file .svm:
+// l'interfaccia del gioco lavora a scatti e la scala indice-valore
+// cambia da auto ad auto, quindi un valore assoluto non sarebbe
+// convertibile. "setting" e' un percorso tipo "FRONTLEFT.CamberSetting".
 export type SetupChange = {
-  field: keyof typeof SETUP_FIELD_LABELS;
-  currentValue: number | null;
-  suggestedValue: number;
+  setting: string;
+  deltaClicks: number;
   reason: string;
 };
 

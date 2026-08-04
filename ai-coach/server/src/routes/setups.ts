@@ -10,6 +10,7 @@ import {
 } from "../repositories/setup.repository";
 
 import { parseSvmFile } from "../services/setup-import.service";
+import { applyClicks } from "../services/svm.service";
 import { getLatestSetupChanges } from "../repositories/message.repository";
 
 const setups = new Hono();
@@ -152,41 +153,55 @@ setups.post("/:id/apply", async (c) => {
     return c.json({ error: "changes (array) is required" }, 400);
   }
 
-  const applied: Record<string, number> = {};
-  for (const change of changes) {
-    if (
-      typeof change?.field === "string" &&
-      typeof change?.suggestedValue === "number"
-    ) {
-      applied[change.field] = change.suggestedValue;
-    }
+  if (!base.sourceSvm) {
+    return c.json(
+      {
+        error:
+          "Questo setup non ha un file .svm di origine: senza, non si puo' applicare nulla a click ne' generare un file per il simulatore.",
+      },
+      400
+    );
   }
 
+  // Le modifiche si applicano al file, non alle colonne: il file e' la
+  // cosa che finisce nel simulatore. I dodici valori della tabella
+  // vengono poi rirealletti dal nuovo file, cosi' restano coerenti.
+  const result = applyClicks(base.sourceSvm, changes);
+
+  if (result.applied.length === 0) {
+    return c.json(
+      {
+        error: "Nessuna modifica applicabile",
+        rejected: result.rejected,
+      },
+      400
+    );
+  }
+
+  const parsed = parseSvmFile(Buffer.from(result.raw, "utf8"));
   const newId = randomUUID();
 
   await createSetup({
     id: newId,
     carId: base.carId,
-    name: typeof body.name === "string" && body.name ? body.name : nextVersionName(base.name),
-    brakeBias: applied.brakeBias ?? base.brakeBias,
-    frontRideHeight: applied.frontRideHeight ?? base.frontRideHeight,
-    rearRideHeight: applied.rearRideHeight ?? base.rearRideHeight,
-    frontCamber: applied.frontCamber ?? base.frontCamber,
-    rearCamber: applied.rearCamber ?? base.rearCamber,
-    frontToe: applied.frontToe ?? base.frontToe,
-    rearToe: applied.rearToe ?? base.rearToe,
-    frontARB: applied.frontARB ?? base.frontARB,
-    rearARB: applied.rearARB ?? base.rearARB,
-    frontSpring: applied.frontSpring ?? base.frontSpring,
-    rearSpring: applied.rearSpring ?? base.rearSpring,
-    diffPreload: applied.diffPreload ?? base.diffPreload,
+    name:
+      typeof body.name === "string" && body.name
+        ? body.name
+        : nextVersionName(base.name),
+    ...parsed.suggestions,
     notes: base.notes,
-    sourceSvm: base.sourceSvm,
+    sourceSvm: result.raw,
     sourceFileName: base.sourceFileName,
     derivedFromId: base.id,
   });
 
-  return c.json({ id: newId, appliedFields: Object.keys(applied) });
+  return c.json({
+    id: newId,
+    applied: result.applied,
+    // Le scartate tornano al client: una modifica che sparisce senza
+    // spiegazione sembrerebbe un bug.
+    rejected: result.rejected,
+  });
 });
 
 setups.put("/:id", async (c) => {
