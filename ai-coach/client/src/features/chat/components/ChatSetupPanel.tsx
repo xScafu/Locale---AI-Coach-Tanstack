@@ -1,14 +1,15 @@
 import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Loader2, Sliders, Upload } from "lucide-react";
+import { Check, Download, Loader2, Sliders, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import {
+  applySetupChanges,
   createSetup,
   getSetupSuggestions,
   getSetups,
   importSetupFile,
-  updateSetup,
+  setupExportUrl,
   SETUP_FIELD_LABELS,
   type Setup,
   type SetupChange,
@@ -55,6 +56,11 @@ function EmptyState({
       await createSetup({
         carId,
         name: parsed.fileName.replace(/\.svm$/i, ""),
+        // Il file integrale viene conservato: la tabella tiene solo
+        // dodici valori, e senza l'originale non si potrebbe piu'
+        // riesportare un .svm caricabile nel simulatore.
+        sourceSvm: parsed.raw,
+        sourceFileName: parsed.fileName,
         ...values,
       });
 
@@ -141,33 +147,21 @@ function Suggestions({
     setApplying(true);
 
     try {
-      // Si modificano SOLO i campi suggeriti dal coach: il resto del
-      // setup viene rimandato indietro invariato, perche' la PUT
-      // sostituisce l'intera riga.
-      const payload: Record<string, unknown> = {
-        name: setup.name,
-        notes: setup.notes,
-      };
-
-      for (const key of Object.keys(SETUP_FIELD_LABELS)) {
-        payload[key] = (setup as unknown as Record<string, number | null>)[key];
-      }
-
-      for (const change of picked) {
-        payload[change.field] = change.suggestedValue;
-      }
-
-      await updateSetup(setup.id, payload as never);
+      // Crea una nuova versione invece di sovrascrivere: il setup di
+      // partenza resta consultabile e ci si puo' tornare.
+      await applySetupChanges(setup.id, picked);
 
       toast.success(
         picked.length === 1
-          ? "1 modifica applicata al setup"
-          : `${picked.length} modifiche applicate al setup`
+          ? "Creata una nuova versione con 1 modifica"
+          : `Creata una nuova versione con ${picked.length} modifiche`
       );
 
       onApplied();
-    } catch {
-      toast.error("Applicazione non riuscita");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Applicazione non riuscita"
+      );
     } finally {
       setApplying(false);
     }
@@ -239,8 +233,8 @@ function Suggestions({
       </Button>
 
       <p className="text-muted-foreground text-xs leading-relaxed">
-        Le modifiche sovrascrivono il setup attivo. Gli altri valori
-        restano invariati.
+        Viene creata una nuova versione, che diventa quella attiva. Il
+        setup di partenza resta salvato nel garage.
       </p>
     </div>
   );
@@ -301,6 +295,15 @@ export default function ChatSetupPanel() {
               </span>
               {active.isActive && <Badge variant="secondary">attivo</Badge>}
             </div>
+
+            {active.sourceSvm && (
+              <Button asChild variant="outline" size="sm" className="w-full">
+                <a href={setupExportUrl(active.id)} download>
+                  <Download className="size-3.5" />
+                  Scarica .svm per il simulatore
+                </a>
+              </Button>
+            )}
 
             <div className="divide-y">
               {Object.entries(SETUP_FIELD_LABELS).map(([key, label]) => {

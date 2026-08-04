@@ -19,6 +19,11 @@ export type SetupInsert = {
   rearSpring?: number | null;
   diffPreload?: number | null;
   notes?: string | null;
+  // Contenuto integrale del .svm da cui nasce il setup, necessario per
+  // riesportarne uno caricabile nel simulatore.
+  sourceSvm?: string | null;
+  sourceFileName?: string | null;
+  derivedFromId?: string | null;
 };
 
 export type SetupUpdate = Partial<Omit<SetupInsert, "id" | "carId">>;

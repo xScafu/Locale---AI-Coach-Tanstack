@@ -53,6 +53,11 @@ export type Setup = {
   rearSpring: number | null;
   diffPreload: number | null;
   notes: string | null;
+  // Presente solo sui setup importati da file: senza, non c'e' nulla da
+  // riesportare verso il simulatore.
+  sourceSvm?: string | null;
+  sourceFileName?: string | null;
+  derivedFromId?: string | null;
 };
 
 export type CarProblem = {
@@ -142,6 +147,8 @@ export async function getSetups(carId: string) {
 export async function createSetup(data: {
   carId: string;
   name: string;
+  sourceSvm?: string | null;
+  sourceFileName?: string | null;
   brakeBias?: number | null;
   frontRideHeight?: number | null;
   rearRideHeight?: number | null;
@@ -219,6 +226,31 @@ export async function getSetupSuggestions() {
   }>;
 }
 
+// Crea una NUOVA versione del setup applicando le modifiche scelte,
+// invece di sovrascrivere: il punto di partenza resta consultabile.
+export async function applySetupChanges(
+  setupId: string,
+  changes: SetupChange[]
+) {
+  const response = await fetch(`${API_URL}/api/setups/${setupId}/apply`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ changes }),
+  });
+
+  const body = (await response.json()) as { id?: string; error?: string };
+
+  if (!response.ok) {
+    throw new Error(body.error ?? "Applicazione non riuscita");
+  }
+
+  return body;
+}
+
+export function setupExportUrl(setupId: string) {
+  return `${API_URL}/api/setups/${setupId}/export`;
+}
+
 // Prima mancava del tutto.
 export async function deleteSetup(setupId: string) {
   const response = await fetch(`${API_URL}/api/setups/${setupId}`, {
@@ -281,6 +313,9 @@ export async function deleteProblem(problemId: string) {
 
 export type SvmImportResult = {
   fileName: string;
+  // Contenuto integrale del file: va rimandato a createSetup, altrimenti
+  // il setup non sara' piu' riesportabile come .svm.
+  raw: string;
   keyValues: Record<string, string>;
   suggestions: Partial<{
     brakeBias: number;

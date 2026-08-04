@@ -57,6 +57,13 @@
       "when": 1785667629229,
       "tag": "0007_unknown_havok",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1785862233922,
+      "tag": "0008_broken_kinsey_walden",
+      "breakpoints": true
     }
   ]
 }

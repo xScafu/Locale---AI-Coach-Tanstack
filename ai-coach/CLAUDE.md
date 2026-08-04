@@ -116,6 +116,24 @@ restituisce l'ultimo non vuoto. Serve perché **la chat lato client vive solo in
 (`features/chat/store/chat.store.ts` non carica lo storico): senza persistenza i
 suggerimenti sparirebbero a ogni ricarica della pagina.
 
+### Setup: versioni e file `.svm`
+
+Applicare i suggerimenti **non sovrascrive**: `POST /api/setups/:id/apply` crea una nuova
+versione (`Base Monza` → `Base Monza v2`), la attiva e tiene `derivedFromId` verso quella
+di partenza, che resta consultabile.
+
+`setups.sourceSvm` conserva il file `.svm` **per intero**. La tabella ha solo dodici
+colonne numeriche, mentre un setup di LMU contiene molti più parametri: senza l'originale
+non si potrebbe produrre un file caricabile nel simulatore. Le versioni derivate lo
+ereditano.
+
+**`GET /api/setups/:id/export` restituisce il file di partenza così com'è, senza
+riscrivere i valori modificati.** In un `.svm` il valore che LMU legge è un indice
+(`CamberSetting=14`) mentre il numero leggibile sta nel commento (`//-3.4 deg`): senza
+conoscere il passo della scala non si risale dall'uno all'altro, e un file con i commenti
+aggiornati ma gli indici vecchi verrebbe caricato con i valori vecchi — peggio che non
+esportarlo. Per chiudere il cerchio servirebbe la tabella indice↔valore per auto e campo.
+
 **Memoria di sessione**: ogni 20 messaggi `services/memory.manager.ts` riassume l'intera
 conversazione via `summary.service.ts` e la scrive in `coach_context.summary`, che
 rientra nel prompt al giro successivo.

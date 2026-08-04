@@ -203,6 +203,18 @@ export const setups = sqliteTable("setups", {
     .$defaultFn(() => true)
     .notNull(),
 
+  // Il .svm originale, conservato per intero. La tabella tiene solo 12
+  // valori numerici, mentre un setup di LMU ne contiene molti di piu':
+  // senza il file di partenza non si potrebbe riprodurre un .svm
+  // caricabile nel simulatore.
+  sourceSvm: text("source_svm"),
+
+  sourceFileName: text("source_file_name"),
+
+  // Da quale setup deriva questa versione, quando nasce applicando i
+  // suggerimenti del coach: serve a non perdere il punto di partenza.
+  derivedFromId: text("derived_from_id"),
+
   createdAt: integer("created_at")
     .$defaultFn(() => Math.floor(Date.now() / 1000))
     .notNull(),
