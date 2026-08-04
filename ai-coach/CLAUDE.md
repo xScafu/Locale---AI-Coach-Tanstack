@@ -277,6 +277,13 @@ curva e finisce tra i "massimi personali". Il file espone `SurfaceTypes` (5 Hz) 
 `Track Edge` (10 Hz), che permetterebbero di scartare i giri fuori pista: non è ancora
 implementato.
 
+**Il primo e l'ultimo giro non entrano mai nelle analisi** (`analysableLaps`): il primo
+esce dai box, l'ultimo è quasi sempre il frammento troncato di fine registrazione — in un
+file reale durava 0.9 s e vinceva come "giro migliore", riducendo il best a 29.9 s su un
+giro da 118 s e azzerando il giro teorico. Sotto i tre giri non si scarta nulla, altrimenti
+non resterebbe niente da analizzare. La pagina Telemetria li mostra comunque, smorzati e
+con la spiegazione: nasconderli farebbe sembrare persi dei dati.
+
 **I giri sono numerati da `computeLapSegments` in sequenza, 1, 2, 3**, nell'ordine in cui
 compaiono nel file. Il numero è quindi anche la posizione, e `getLapTelemetrySeries`
 indicizza direttamente (`segments[lapNumber - 1]`).

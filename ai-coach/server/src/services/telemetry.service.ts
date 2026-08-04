@@ -291,6 +291,21 @@ export async function computeLapSegments(
   return segments;
 }
 
+// Il primo e l'ultimo giro non entrano MAI nelle analisi.
+//
+// Il primo esce dai box: parte da fermo, gomme e freni freddi, e non
+// rappresenta il passo del pilota. L'ultimo e' quasi sempre un
+// frammento troncato a fine registrazione — in un file reale durava 0.9
+// secondi — e finirebbe per risultare il "piu' veloce", falsando giro
+// migliore, riferimenti per curva e giro teorico.
+//
+// Sotto i tre giri non si scarta nulla: restare senza dati sarebbe
+// peggio, e i filtri successivi (durata minima e continuita') coprono
+// comunque i casi limite.
+export function analysableLaps<T>(segments: T[]): T[] {
+  return segments.length >= 3 ? segments.slice(1, -1) : segments;
+}
+
 export type LapInfo = { lapNumber: number; startTs: number };
 
 export async function getLaps(filePath: string): Promise<LapInfo[]> {
@@ -474,7 +489,7 @@ export async function getTelemetrySummary(
 
     const lapStats: LapStat[] = [];
 
-    for (const segment of segments) {
+    for (const segment of analysableLaps(segments)) {
       const lapTimeSeconds = (segment.endIdx - segment.startIdx + 1) / gpsFreq;
 
       // Filtra giri troppo corti: probabile uscita/rientro ai box o
@@ -862,7 +877,7 @@ export async function computeTrackProfile(
     const gridFreq = freqOf("GPS Latitude") ?? 10;
     const segments = await computeLapSegments(conn, channels);
 
-    const valid = segments.filter(
+    const valid = analysableLaps(segments).filter(
       (s) => (s.endIdx - s.startIdx + 1) / gridFreq >= 20
     );
 

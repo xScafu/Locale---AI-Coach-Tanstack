@@ -71,6 +71,18 @@ type QueryRow = Record<string, unknown>;
 // dentro telemetry_imports.tables lato server.
 type TableInfo = { name: string; rowCount: number };
 
+// Stesso criterio di analysableLaps lato server: il primo giro esce dai
+// box e l'ultimo e' il frammento di fine registrazione. Sotto i tre
+// giri non si esclude nulla, altrimenti non resterebbe niente.
+function isExcludedFromAnalysis(
+  lap: { lapNumber: number },
+  laps: { lapNumber: number }[]
+) {
+  if (laps.length < 3) return false;
+
+  return lap.lapNumber === 1 || lap.lapNumber === laps.length;
+}
+
 
 // Proietta insieme sagoma di riferimento + giro corrente sullo stesso
 // piano in metri: condividono origine e scala, quindi restano allineati
@@ -597,23 +609,52 @@ function Telemetry() {
             )}
 
             {selectedImport && !lapsQuery.isPending && (
-              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                {lapsQuery.data?.laps?.map((lap) => (
-                  <Button
-                    key={lap.lapNumber}
-                    variant={
-                      selectedLap === lap.lapNumber ? "default" : "outline"
-                    }
-                    size="sm"
-                    className="font-mono"
-                    onClick={() => {
-                      setSelectedLap(lap.lapNumber);
-                      setCursorIndex(0);
-                    }}
-                  >
-                    {lap.lapNumber}
-                  </Button>
-                ))}
+              <div className="space-y-2">
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                  {lapsQuery.data?.laps?.map((lap) => {
+                    const excluded = isExcludedFromAnalysis(
+                      lap,
+                      lapsQuery.data!.laps
+                    );
+
+                    return (
+                      <Button
+                        key={lap.lapNumber}
+                        variant={
+                          selectedLap === lap.lapNumber ? "default" : "outline"
+                        }
+                        size="sm"
+                        // Restano visibili e cliccabili — guardarli puo'
+                        // servire — ma smorzati, per non far credere che
+                        // rientrino nelle statistiche.
+                        className={
+                          excluded && selectedLap !== lap.lapNumber
+                            ? "text-muted-foreground border-dashed font-mono opacity-60"
+                            : "font-mono"
+                        }
+                        title={
+                          excluded
+                            ? "Escluso dalle analisi: giro di uscita dai box o frammento finale"
+                            : undefined
+                        }
+                        onClick={() => {
+                          setSelectedLap(lap.lapNumber);
+                          setCursorIndex(0);
+                        }}
+                      >
+                        {lap.lapNumber}
+                      </Button>
+                    );
+                  })}
+                </div>
+
+                {(lapsQuery.data?.laps?.length ?? 0) >= 3 && (
+                  <p className="text-muted-foreground text-xs leading-relaxed">
+                    Il primo e l'ultimo giro sono esclusi dalle analisi: uno
+                    esce dai box, l'altro è il frammento di fine
+                    registrazione.
+                  </p>
+                )}
               </div>
             )}
           </CardContent>
