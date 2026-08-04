@@ -222,6 +222,44 @@ function relevant(setting: SvmSetting) {
   return isAdjustable(setting) && !IRRELEVANT_KEYS.test(setting.key);
 }
 
+// Etichette per area. Un elenco piatto di 68 voci non fa percepire al
+// modello che esistono leve diverse dal camber: raggruppandole si vede
+// a colpo d'occhio che ci sono aerodinamica, barre, differenziale e
+// ammortizzatori.
+const AREA_LABELS: Record<string, string> = {
+  FRONTWING: "Aerodinamica",
+  REARWING: "Aerodinamica",
+  BODYAERO: "Raffreddamento e condotti freni",
+  SUSPENSION: "Sospensioni: barre, convergenza, terzi elementi",
+  CONTROLS: "Freni e controlli",
+  ENGINE: "Motore e ibrido",
+  DRIVELINE: "Differenziale",
+  FRONT: "Assale anteriore (entrambi i lati)",
+  REAR: "Assale posteriore (entrambi i lati)",
+  FRONTLEFT: "Anteriore sinistra",
+  FRONTRIGHT: "Anteriore destra",
+  REARLEFT: "Posteriore sinistra",
+  REARRIGHT: "Posteriore destra",
+  GENERAL: "Generale",
+};
+
+export function describeAdjustableSettingsByArea(raw: string) {
+  const grouped = new Map<string, string[]>();
+
+  for (const entry of describeAdjustableSettings(raw)) {
+    const section = entry.split(".")[0];
+    const label = AREA_LABELS[section] ?? section;
+
+    if (!grouped.has(label)) grouped.set(label, []);
+    grouped.get(label)!.push(entry);
+  }
+
+  return [...grouped.entries()].map(([label, entries]) => ({
+    label,
+    entries,
+  }));
+}
+
 // Elenco compatto delle regolazioni su cui il coach puo' intervenire:
 // percorso, indice attuale e valore leggibile.
 export function describeAdjustableSettings(raw: string) {

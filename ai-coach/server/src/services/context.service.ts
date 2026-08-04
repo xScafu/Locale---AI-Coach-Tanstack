@@ -103,7 +103,7 @@ function buildTrackSection(track: any) {
   return lines.join("\n");
 }
 
-import { describeAdjustableSettings } from "./svm.service";
+import { describeAdjustableSettingsByArea } from "./svm.service";
 
 // I campi del setup con la loro etichetta: elencarli come dati evita
 // tredici righe di stringhe quasi identiche e tiene fuori dal prompt
@@ -150,31 +150,45 @@ estensione .svm esportato da Le Mans Ultimate.`;
   // dell'auto — ala, mappe TC, ammortizzatori, migration — non solo le
   // dodici che l'app tiene in colonne dedicate.
   if (setup.sourceSvm) {
-    const adjustables = describeAdjustableSettings(setup.sourceSvm);
+    const areas = describeAdjustableSettingsByArea(setup.sourceSvm);
 
     lines.push("");
     lines.push(
       "Regolazioni disponibili su questa auto, nel formato " +
-        "SEZIONE.Chiave = indice (valore attuale):"
+        "SEZIONE.Chiave = indice (valore attuale). Sono TUTTE modificabili:"
     );
-    lines.push(...adjustables.map((s) => `- ${s}`));
+
+    for (const area of areas) {
+      lines.push("");
+      lines.push(`${area.label}:`);
+      lines.push(...area.entries.map((s) => `- ${s}`));
+    }
 
     lines.push("");
     lines.push(
       `L'interfaccia del gioco lavora a CLICK: ogni scatto e' +1 o -1
 sull'indice, e la scala che lega indice e valore leggibile cambia da
 auto ad auto. Non proporre quindi un valore finale, ma di quanti click
-muovere: nel campo setupChanges usa "setting" con il percorso esatto
-preso dall'elenco qui sopra e "deltaClicks" con lo spostamento (negativo
-per scendere). Nella prosa spiega la modifica anche in termini
+muovere: nel campo setupChanges usa "setting" con il percorso ESATTO
+copiato dall'elenco qui sopra e "deltaClicks" con lo spostamento
+(negativo per scendere). Nella prosa spiega la modifica anche in termini
 comprensibili, citando il valore attuale.
 
-Attenzione al verso: per il camber un indice piu' ALTO significa camber
-MENO negativo. Se non sei certo del verso di una regolazione, dillo
-invece di indovinare.
+Dove l'elenco mostra un percorso che inizia con FRONT. o REAR., quello
+vale gia' per entrambi i lati: usalo cosi' com'e', non scrivere
+FRONTLEFT o FRONTRIGHT.
 
-Sulle auto simmetriche muovi sempre insieme sinistra e destra
-(FRONTLEFT e FRONTRIGHT, REARLEFT e REARRIGHT) con lo stesso delta.`
+Scegli le leve piu' adatte al problema descritto, spaziando su tutta la
+vettura invece di tornare sempre sulle stesse: le barre antirollio e
+l'ala sono spesso lo strumento piu' diretto per spostare il bilanciamento,
+il differenziale agisce su trazione e rotazione in uscita, gli
+ammortizzatori sui trasferimenti di carico, il brake bias e la migration
+sull'ingresso in staccata. Il camber e la convergenza sono regolazioni
+fini: non usarli come prima risposta a un problema di bilanciamento.
+
+Se non sei certo del verso di una regolazione su questa auto, dillo
+invece di indovinare. Il verso non e' sempre intuitivo: per il camber,
+per esempio, un indice piu' ALTO significa camber MENO negativo.`
     );
   } else {
     // Setup creato a mano: restano solo i dodici valori dell'app e non

@@ -127,6 +127,14 @@ colonne numeriche, mentre un setup di LMU contiene molti più parametri: senza l
 non si potrebbe produrre un file caricabile nel simulatore. Le versioni derivate lo
 ereditano.
 
+**Un setup senza `sourceSvm` degrada il coach in silenzio.** `buildSetupSection` ha due
+rami: con il file elenca tutte le regolazioni dell'auto, senza ricade sulle dodici colonne
+e **ordina di lasciare `setupChanges` vuoto**. Il sintomo è "il coach suggerisce sempre le
+stesse parti e non cita mai ala o barre antirollio" — la causa non è il modello, è il file
+mancante. Peggiora perché le barre della Ferrari valgono `E-P2`/`A-P1`, che non sono
+numeri: `parseCommentNumber` le scarta e restano `NULL` anche tra le dodici colonne.
+Quando manca il file, la scheda Setup mostra un avviso con il pulsante per ricaricarlo.
+
 ### Il formato `.svm` e il ragionamento a click
 
 `services/svm.service.ts` è l'unico posto che legge e riscrive i file di setup.

@@ -1,6 +1,13 @@
 import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Download, Loader2, Sliders, Upload } from "lucide-react";
+import {
+  Check,
+  Download,
+  Loader2,
+  Sliders,
+  TriangleAlert,
+  Upload,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -36,12 +43,14 @@ function settingLabel(path: string) {
   return `${place} · ${readable}`;
 }
 
-function EmptyState({
+function UploadSetupButton({
   carId,
   onImported,
+  label,
 }: {
   carId: string | null;
   onImported: () => void;
+  label: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
@@ -90,12 +99,7 @@ function EmptyState({
   }
 
   return (
-    <div className="space-y-3">
-      <p className="text-muted-foreground text-sm leading-relaxed">
-        Il coach non può proporre modifiche senza sapere da dove parti.
-        Carica il tuo setup attuale.
-      </p>
-
+    <>
       <Button
         size="sm"
         className="w-full"
@@ -107,7 +111,7 @@ function EmptyState({
         ) : (
           <Upload className="size-4" />
         )}
-        {importing ? "Lettura..." : "Carica setup .svm"}
+        {importing ? "Lettura..." : label}
       </Button>
 
       {!carId && (
@@ -125,6 +129,29 @@ function EmptyState({
           const file = e.target.files?.[0];
           if (file) handleFile(file);
         }}
+      />
+    </>
+  );
+}
+
+function EmptyState({
+  carId,
+  onImported,
+}: {
+  carId: string | null;
+  onImported: () => void;
+}) {
+  return (
+    <div className="space-y-3">
+      <p className="text-muted-foreground text-sm leading-relaxed">
+        Il coach non può proporre modifiche senza sapere da dove parti.
+        Carica il tuo setup attuale.
+      </p>
+
+      <UploadSetupButton
+        carId={carId}
+        onImported={onImported}
+        label="Carica setup .svm"
       />
     </div>
   );
@@ -305,13 +332,39 @@ export default function ChatSetupPanel() {
               {active.isActive && <Badge variant="secondary">attivo</Badge>}
             </div>
 
-            {active.sourceSvm && (
+            {active.sourceSvm ? (
               <Button asChild variant="outline" size="sm" className="w-full">
                 <a href={setupExportUrl(active.id)} download>
                   <Download className="size-3.5" />
                   Scarica .svm per il simulatore
                 </a>
               </Button>
+            ) : (
+              // Setup importato prima che l'app conservasse il file, o
+              // creato a mano. Senza il .svm il coach vede solo i dodici
+              // valori delle colonne — niente ala, barre, ammortizzatori
+              // o mappe — e non puo' proporre modifiche a click. Senza
+              // questo riquadro non ci sarebbe modo di rimediare, perche'
+              // il caricamento compariva solo quando NON c'era un setup.
+              <div className="border-destructive/40 bg-destructive/5 space-y-2 rounded-lg border p-3">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <TriangleAlert className="text-destructive size-4" />
+                  File .svm mancante
+                </div>
+
+                <p className="text-muted-foreground text-xs leading-relaxed">
+                  Il coach vede solo i valori base e non può proporre
+                  modifiche. Ricarica il file per sbloccare tutte le
+                  regolazioni — ala, barre, differenziale, ammortizzatori —
+                  e l'esportazione verso il simulatore.
+                </p>
+
+                <UploadSetupButton
+                  carId={active.carId}
+                  onImported={refresh}
+                  label="Ricarica il .svm"
+                />
+              </div>
             )}
 
             <div className="divide-y">
