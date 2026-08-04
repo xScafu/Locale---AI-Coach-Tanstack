@@ -70,9 +70,23 @@ setups.get("/suggestions", async (c) => {
   }
 
   try {
+    const parsed = JSON.parse(message.setupChanges);
+
+    // Nello storico ci sono anche suggerimenti nella forma precedente
+    // ({ field, currentValue, suggestedValue }), salvati quando le
+    // modifiche erano valori assoluti invece che click. Non sono
+    // applicabili — non hanno un percorso del file ne' un delta — e
+    // mandarli al client lo faceva andare in errore leggendo un
+    // "setting" inesistente. Vengono quindi scartati alla lettura.
+    const changes = (Array.isArray(parsed) ? parsed : []).filter(
+      (change) =>
+        typeof change?.setting === "string" &&
+        Number.isInteger(change?.deltaClicks)
+    );
+
     return c.json({
-      changes: JSON.parse(message.setupChanges),
-      createdAt: message.createdAt,
+      changes,
+      createdAt: changes.length > 0 ? message.createdAt : null,
     });
   } catch {
     return c.json({ changes: [], createdAt: null });

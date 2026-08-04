@@ -29,7 +29,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 // "FRONTLEFT.CamberSetting" -> "Frontleft · Camber". Il percorso grezzo
 // e' preciso ma illeggibile in una colonna stretta.
-function settingLabel(path: string) {
+function settingLabel(path: string | undefined) {
+  // Difesa contro dati inattesi: un suggerimento senza "setting" faceva
+  // esplodere l'intera scheda invece di degradare la singola riga.
+  if (typeof path !== "string" || !path) return "Regolazione sconosciuta";
+
   const [section, key] = path.split(".");
 
   if (!key) return path;
