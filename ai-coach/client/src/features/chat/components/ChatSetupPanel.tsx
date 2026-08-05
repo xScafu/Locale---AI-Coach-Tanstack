@@ -4,6 +4,7 @@ import {
   Check,
   Download,
   Loader2,
+  RefreshCw,
   Sliders,
   TriangleAlert,
   Upload,
@@ -328,12 +329,47 @@ export default function ChatSetupPanel() {
             </div>
 
             {active.sourceSvm ? (
-              <Button asChild variant="outline" size="sm" className="w-full">
-                <a href={setupExportUrl(active.id)} download>
-                  <Download className="size-3.5" />
-                  Scarica .svm per il simulatore
-                </a>
-              </Button>
+              <div className="space-y-2">
+                <Button asChild variant="outline" size="sm" className="w-full">
+                  <a href={setupExportUrl(active.id)} download>
+                    <Download className="size-3.5" />
+                    Scarica .svm per il simulatore
+                  </a>
+                </Button>
+
+                {/* Applicando i click riscriviamo l'indice ma non il
+                    valore leggibile, che solo il gioco sa ricalcolare:
+                    finche' il file non torna da LMU, il coach vede
+                    l'indice giusto e il valore vecchio. Il giro completo
+                    va quindi detto, altrimenti nessuno lo farebbe. */}
+                {active.derivedFromId && (
+                  <div className="bg-muted/50 space-y-1.5 rounded-lg border p-3">
+                    <div className="flex items-center gap-2 text-xs font-medium">
+                      <RefreshCw className="size-3.5" />
+                      Chiudi il giro in tre passi
+                    </div>
+
+                    <ol className="text-muted-foreground list-inside list-decimal space-y-0.5 text-xs leading-relaxed">
+                      <li>Scarica il file qui sopra e caricalo in LMU.</li>
+                      <li>Salvalo dal gioco, che ricalcola i valori.</li>
+                      <li>Reimportalo qui, così il coach riparte da numeri veri.</li>
+                    </ol>
+
+                    <p className="text-muted-foreground text-xs leading-relaxed">
+                      Le modifiche applicate qui cambiano lo scatto, non
+                      l'etichetta: finché non rifai questo giro, il coach
+                      conosce la posizione esatta ma non il valore
+                      aggiornato.
+                    </p>
+
+                    <UploadSetupButton
+                      carId={active.carId}
+                      onImported={refresh}
+                      label="Reimporta il .svm salvato da LMU"
+                    />
+                  </div>
+                )}
+              </div>
             ) : (
               // Setup importato prima che l'app conservasse il file, o
               // creato a mano. Senza il .svm il coach vede solo i dodici
