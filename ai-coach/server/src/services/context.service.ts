@@ -12,13 +12,6 @@ function buildTrackSection(track: any) {
   if (track.variant && track.variant !== track.name) {
     lines.push(`Variante: ${track.variant}`);
   }
-  if (track.lengthM) lines.push(`Lunghezza: ${Math.round(track.lengthM)} m`);
-  if (track.cornerCount) lines.push(`Curve rilevate: ${track.cornerCount}`);
-  if (track.referenceLapSeconds) {
-    lines.push(`Tempo di riferimento del pilota: ${track.referenceLapSeconds}s`);
-  }
-  if (track.notes) lines.push(`Note del pilota: ${track.notes}`);
-
   let profile: any = null;
 
   try {
@@ -26,6 +19,28 @@ function buildTrackSection(track: any) {
   } catch {
     profile = null;
   }
+
+  // Lunghezza e numero curve devono venire dalla STESSA fonte
+  // dell'elenco qui sotto. Le colonne di `tracks` vengono riempite solo
+  // se vuote, per non sovrascrivere una correzione del pilota: se pero'
+  // le ha riempite un import parziale, restano sbagliate per sempre. Su
+  // COTA il riepilogo diceva "1406 m, 4 curve" mentre l'elenco ne
+  // mostrava sedici fino a 5397 m, e con una contraddizione simile il
+  // modello smette di fidarsi della numerazione.
+  const lengthM = profile?.lengthM ?? track.lengthM;
+  const cornerCount = profile?.corners?.length ?? track.cornerCount;
+
+  if (lengthM) lines.push(`Lunghezza: ${Math.round(lengthM)} m`);
+  if (cornerCount) lines.push(`Curve rilevate: ${cornerCount}`);
+
+  // Il valore in colonna NON viene riportato quando differisce: lo
+  // schema non distingue una correzione del pilota da un riempimento
+  // automatico di un import precedente, quindi presentarlo come
+  // "dichiarato dal pilota" affermerebbe qualcosa che non sappiamo.
+  if (track.referenceLapSeconds) {
+    lines.push(`Tempo di riferimento del pilota: ${track.referenceLapSeconds}s`);
+  }
+  if (track.notes) lines.push(`Note del pilota: ${track.notes}`);
 
   if (!profile?.corners?.length) {
     lines.push(
@@ -38,7 +53,10 @@ function buildTrackSection(track: any) {
   lines.push(`Giro migliore analizzato: ${profile.bestLapSeconds}s`);
   lines.push("");
   lines.push(
-    "Profilo curve dal giro migliore del pilota (distanze in metri dal traguardo):"
+    "Profilo curve dal giro migliore del pilota. Le curve si identificano " +
+      "SEMPRE con il loro numero: le distanze in metri dal traguardo " +
+      "servono solo a te per riconoscerle, non vanno usate per nominarle " +
+      "parlando col pilota."
   );
 
   for (const c of profile.corners) {
@@ -305,10 +323,18 @@ Istruzioni:
 - Se sono disponibili dati di telemetria, usali come riferimento
   concreto (es. confronta i consigli con la velocità massima o l'uso
   di freno/acceleratore osservati) invece di parlare in astratto.
-- Il profilo curve viene dai dati reali di questo pilota su questo
-  simulatore: quando parli di una curva, citala con la sua distanza dal
-  traguardo e i suoi numeri, non con nomi presi dalla tua conoscenza
-  del circuito reale, che nel simulatore possono non corrispondere.
+- **Chiama sempre le curve per numero**: "curva 7", mai "la curva a
+  3588 m". Le distanze nel profilo servono a te per riconoscerle e per
+  ragionare sulle staccate, ma al pilota non dicono nulla: lui in pista
+  vede i cartelli e la sequenza delle curve, non l'odometro. Puoi citare
+  una distanza solo per indicare un punto di frenata rispetto a un
+  riferimento ("stacca una decina di metri piu' tardi"), mai per
+  identificare la curva.
+- La numerazione e' quella del profilo qui sopra, ricavata dai dati
+  reali di questo pilota: non usare nomi presi dalla tua conoscenza del
+  circuito reale, che nel simulatore possono non corrispondere. Se un
+  nome noto e' utile puoi affiancarlo tra parentesi, ma il riferimento
+  principale resta il numero.
 - Quando possibile proponi prove in pista.
 `;
 }
