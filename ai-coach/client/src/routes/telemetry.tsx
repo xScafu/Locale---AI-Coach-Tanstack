@@ -7,11 +7,14 @@ import { useActivePilot } from "@/hooks/useActivePilot";
 import { getCars } from "@/services/garage.api";
 import {
   deleteTelemetryImport,
+  getLapChannels,
   getLapTelemetry,
+  getTelemetryChannels,
   getTelemetryImports,
   getTelemetryLaps,
   runTelemetryQuery,
   uploadTelemetry,
+  type Channel,
   type TelemetryImport,
   type TelemetryPoint,
 } from "@/services/telemetry.api";
@@ -61,7 +64,30 @@ const CHANNEL_COLOR = {
   throttle: "var(--chart-2)",
   speed: "var(--chart-3)",
   cursor: "var(--chart-4)",
+  // I canali scelti dal selettore non hanno un significato fisso, quindi
+  // prendono l'unico --chart-* non ancora assegnato a un canale.
+  picked: "var(--chart-5)",
 } as const;
+
+// I canali per ruota si colorano per RUOTA, non per grandezza: vedi il
+// commento sui --wheel-* in global.css.
+const WHEEL_COLOR = [
+  "var(--wheel-1)",
+  "var(--wheel-2)",
+  "var(--wheel-3)",
+  "var(--wheel-4)",
+] as const;
+
+// Questi cinque non compaiono nel selettore perche' la pagina li mostra
+// gia': i primi tre nei grafici fissi qui sotto, gli altri due come
+// mappa. Metterli nell'elenco inviterebbe a disegnarli due volte.
+const ALREADY_ON_SCREEN = new Set([
+  "Ground Speed",
+  "Throttle Pos",
+  "Brake Pos",
+  "GPS Latitude",
+  "GPS Longitude",
+]);
 
 type LatLon = { lat: number; lon: number };
 
@@ -240,20 +266,32 @@ function TrackMap({
   );
 }
 
+type ChartSeries = {
+  label: string;
+  values: (number | null)[];
+  color: string;
+};
+
+// Un grafico puo' portare piu' tracce perche' quindici dei cinquantotto
+// canali del file sono per ruota: temperature, pressioni, usura,
+// velocita' delle ruote. Disegnarne quattro su assi separati renderebbe
+// impossibile vedere lo squilibrio tra un lato e l'altro, che e' l'unica
+// cosa che si guarda in quei canali. La scala e' quindi condivisa da
+// tutte le tracce dello stesso grafico.
 function LineChart({
   label,
-  values,
+  series,
   cursorIndex,
-  color,
   unit,
 }: {
   label: string;
-  values: (number | null)[];
+  series: ChartSeries[];
   cursorIndex: number;
-  color: string;
   unit: string;
 }) {
-  const valid = values.filter((v): v is number => v !== null);
+  const valid = series
+    .flatMap((s) => s.values)
+    .filter((v): v is number => v !== null);
 
   if (valid.length === 0) {
     return <p className="text-muted-foreground text-sm">Nessun dato.</p>;
@@ -264,37 +302,60 @@ function LineChart({
   const min = Math.min(...valid);
   const max = Math.max(...valid);
 
-  const points = values
-    .map((v, i) => {
-      if (v === null) return null;
-      const x = (i / (values.length - 1 || 1)) * W;
-      const y = H - ((v - min) / (max - min || 1)) * H;
-      return `${x},${y}`;
-    })
-    .filter(Boolean)
-    .join(" ");
+  // Un canale costante (la temperatura ambiente, il boost di un aspirato)
+  // schiaccerebbe la linea sul bordo: senza escursione si disegna a
+  // meta' altezza, dove si legge come "piatto" invece che come "a zero".
+  const flat = max - min === 0;
 
-  const cursorX = (cursorIndex / (values.length - 1 || 1)) * W;
-  const current = values[cursorIndex];
+  function pathFor(values: (number | null)[]) {
+    return values
+      .map((v, i) => {
+        if (v === null) return null;
+        const x = (i / (values.length - 1 || 1)) * W;
+        const y = flat ? H / 2 : H - ((v - min) / (max - min)) * H;
+        return `${x},${y}`;
+      })
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  const length = Math.max(...series.map((s) => s.values.length));
+  const cursorX = (cursorIndex / (length - 1 || 1)) * W;
 
   return (
     <div>
-      <div className="mb-1 flex items-baseline justify-between gap-2">
-        <span className="flex items-center gap-2 text-sm font-medium">
-          <span
-            aria-hidden
-            className="size-2 rounded-full"
-            style={{ backgroundColor: color }}
-          />
-          {label}
-        </span>
+      <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <span className="text-sm font-medium">{label}</span>
 
-        {/* Il valore sotto al cursore: senza questo il grafico si legge
+        {/* I valori sotto al cursore: senza questi il grafico si legge
             solo "a occhio" e lo slider non serve a niente di preciso. */}
-        <span className="font-mono text-sm tabular-nums">
-          {current !== null && current !== undefined
-            ? `${current.toFixed(1)} ${unit}`
-            : "—"}
+        <span className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          {series.map((s) => {
+            const current = s.values[cursorIndex];
+
+            return (
+              <span
+                key={s.label}
+                className="flex items-center gap-1.5 font-mono text-xs tabular-nums"
+              >
+                <span
+                  aria-hidden
+                  className="size-2 shrink-0 rounded-full"
+                  style={{ backgroundColor: s.color }}
+                />
+                {series.length > 1 && (
+                  <span className="text-muted-foreground">{s.label}</span>
+                )}
+                {current !== null && current !== undefined
+                  ? current.toFixed(1)
+                  : "—"}
+              </span>
+            );
+          })}
+
+          <span className="text-muted-foreground font-mono text-xs">
+            {unit}
+          </span>
         </span>
       </div>
 
@@ -303,7 +364,16 @@ function LineChart({
         preserveAspectRatio="none"
         className="bg-muted/30 h-24 w-full rounded-lg border"
       >
-        <polyline points={points} fill="none" stroke={color} strokeWidth={2} />
+        {series.map((s) => (
+          <polyline
+            key={s.label}
+            points={pathFor(s.values)}
+            fill="none"
+            stroke={s.color}
+            strokeWidth={2}
+          />
+        ))}
+
         <line
           x1={cursorX}
           y1={0}
@@ -326,6 +396,89 @@ function LineChart({
   );
 }
 
+// Il file contiene cinquantotto canali. Disegnarli tutti insieme
+// renderebbe la pagina illeggibile e scaricherebbe decine di migliaia di
+// punti per niente, quindi si scelgono: i tre di sempre restano fissi,
+// il resto si aggiunge da qui. Il campo di ricerca serve perche' con
+// cinquantatre voci scorrere l'elenco e' piu' lento che scriverne il
+// nome.
+function ChannelPicker({
+  channels,
+  picked,
+  onToggle,
+  onClear,
+}: {
+  channels: Channel[];
+  picked: string[];
+  onToggle: (name: string) => void;
+  onClear: () => void;
+}) {
+  const [filter, setFilter] = useState("");
+
+  const available = channels.filter((c) => !ALREADY_ON_SCREEN.has(c.name));
+  const needle = filter.trim().toLowerCase();
+  const shown = needle
+    ? available.filter((c) => c.name.toLowerCase().includes(needle))
+    : available;
+
+  if (available.length === 0) return null;
+
+  return (
+    <div className="space-y-3 rounded-lg border p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-sm font-medium">
+          Altri canali del file ({available.length})
+        </span>
+
+        <div className="flex items-center gap-2">
+          <Input
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Cerca canale..."
+            className="h-8 w-44"
+          />
+
+          {picked.length > 0 && (
+            <Button variant="ghost" size="sm" onClick={onClear}>
+              Togli tutti
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <div className="flex max-h-44 flex-wrap gap-1.5 overflow-y-auto">
+        {shown.map((channel) => {
+          const isPicked = picked.includes(channel.name);
+
+          return (
+            <Button
+              key={channel.name}
+              variant={isPicked ? "default" : "outline"}
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => onToggle(channel.name)}
+              title={`${channel.frequency} Hz${
+                channel.unit ? `, ${channel.unit}` : ""
+              }${channel.labels.length === 4 ? ", una traccia per ruota" : ""}`}
+            >
+              {channel.name}
+              {channel.labels.length === 4 && (
+                <span className="text-muted-foreground ml-1">×4</span>
+              )}
+            </Button>
+          );
+        })}
+
+        {shown.length === 0 && (
+          <p className="text-muted-foreground text-sm">
+            Nessun canale con questo nome.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Telemetry() {
   const queryClient = useQueryClient();
   const { pilotId } = useActivePilot();
@@ -340,6 +493,9 @@ function Telemetry() {
   // gia' il giro in modo univoco.
   const [selectedLap, setSelectedLap] = useState<number | null>(null);
   const [cursorIndex, setCursorIndex] = useState(0);
+  // I canali aggiunti dal selettore. Vanno azzerati cambiando import:
+  // file di auto diverse non hanno gli stessi canali.
+  const [pickedChannels, setPickedChannels] = useState<string[]>([]);
   const [trackId, setTrackId] = useState("");
   const [savingReference, setSavingReference] = useState(false);
 
@@ -396,7 +552,37 @@ function Telemetry() {
     enabled: !!selectedImport && selectedLap !== null,
   });
 
+  const channelsQuery = useQuery({
+    queryKey: ["telemetry-channels", selectedImport?.id],
+    queryFn: () => getTelemetryChannels(selectedImport!.id),
+    enabled: !!selectedImport,
+  });
+
+  const pickedSeriesQuery = useQuery({
+    queryKey: [
+      "telemetry-lap-channels",
+      selectedImport?.id,
+      selectedLap,
+      // L'ordine dei canali scelti non cambia il risultato: senza
+      // ordinamento la chiave cambierebbe togliendo e rimettendo lo
+      // stesso canale, e la richiesta ripartirebbe per niente.
+      [...pickedChannels].sort().join(","),
+    ],
+    queryFn: () =>
+      getLapChannels(selectedImport!.id, selectedLap!, pickedChannels),
+    enabled:
+      !!selectedImport && selectedLap !== null && pickedChannels.length > 0,
+  });
+
   const points = lapTelemetryQuery.data?.points ?? [];
+
+  function togglePickedChannel(name: string) {
+    setPickedChannels((current) =>
+      current.includes(name)
+        ? current.filter((n) => n !== name)
+        : [...current, name]
+    );
+  }
 
   const tables: TableInfo[] = selectedImport?.tables
     ? JSON.parse(selectedImport.tables)
@@ -538,6 +724,7 @@ function Telemetry() {
                 onClick={() => {
                   setSelectedImport(item);
                   setSelectedLap(null);
+                  setPickedChannels([]);
                   setQueryRows(null);
                   setQueryError(null);
                 }}
@@ -763,29 +950,77 @@ function Telemetry() {
                   <div className="space-y-4">
                     <LineChart
                       label="Velocità"
-                      values={points.map((p) => p.speedKmh)}
+                      series={[
+                        {
+                          label: "Velocità",
+                          values: points.map((p) => p.speedKmh),
+                          color: CHANNEL_COLOR.speed,
+                        },
+                      ]}
                       cursorIndex={cursorIndex}
-                      color={CHANNEL_COLOR.speed}
                       unit="km/h"
                     />
 
                     <LineChart
                       label="Acceleratore"
-                      values={points.map((p) => p.throttlePct)}
+                      series={[
+                        {
+                          label: "Acceleratore",
+                          values: points.map((p) => p.throttlePct),
+                          color: CHANNEL_COLOR.throttle,
+                        },
+                      ]}
                       cursorIndex={cursorIndex}
-                      color={CHANNEL_COLOR.throttle}
                       unit="%"
                     />
 
                     <LineChart
                       label="Freno"
-                      values={points.map((p) => p.brakePct)}
+                      series={[
+                        {
+                          label: "Freno",
+                          values: points.map((p) => p.brakePct),
+                          color: CHANNEL_COLOR.brake,
+                        },
+                      ]}
                       cursorIndex={cursorIndex}
-                      color={CHANNEL_COLOR.brake}
                       unit="%"
                     />
                   </div>
                 </div>
+
+                <ChannelPicker
+                  channels={channelsQuery.data?.channels ?? []}
+                  picked={pickedChannels}
+                  onToggle={togglePickedChannel}
+                  onClear={() => setPickedChannels([])}
+                />
+
+                {pickedChannels.length > 0 && (
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    {pickedSeriesQuery.isPending &&
+                      pickedChannels.map((name) => (
+                        <Skeleton key={name} className="h-32 rounded-lg" />
+                      ))}
+
+                    {pickedSeriesQuery.data?.series?.map((serie) => (
+                      <LineChart
+                        key={serie.name}
+                        label={serie.name}
+                        series={serie.values.map((values, i) => ({
+                          label: serie.labels[i] ?? serie.name,
+                          values,
+                          color:
+                            serie.values.length === 4
+                              ? WHEEL_COLOR[i]
+                              : CHANNEL_COLOR.picked,
+                        }))}
+                        cursorIndex={cursorIndex}
+                        unit={serie.unit}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </CardContent>

@@ -117,3 +117,43 @@ export async function getLapTelemetry(id: string, lapNumber: number) {
   );
   return response.json() as Promise<{ points: TelemetryPoint[] }>;
 }
+
+// Un canale del file .duckdb. `labels` ha un'etichetta per traccia: una
+// sola per i canali normali, quattro (AS/AD/PS/PD) per quelli per ruota.
+export type Channel = {
+  name: string;
+  frequency: number;
+  unit: string;
+  columns: string[];
+  labels: string[];
+  boolean: boolean;
+};
+
+export async function getTelemetryChannels(id: string) {
+  const response = await fetch(`${API_URL}/api/telemetry/${id}/channels`);
+  return response.json() as Promise<{ channels: Channel[] }>;
+}
+
+export type ChannelSeries = {
+  name: string;
+  unit: string;
+  frequency: number;
+  labels: string[];
+  // Una serie per traccia, gia' allineata alla stessa griglia dei
+  // TelemetryPoint dello stesso giro: stesso indice, stesso istante.
+  values: number[][];
+};
+
+export async function getLapChannels(
+  id: string,
+  lapNumber: number,
+  names: string[]
+) {
+  const query = encodeURIComponent(names.join(","));
+
+  const response = await fetch(
+    `${API_URL}/api/telemetry/${id}/laps/${lapNumber}/channels?names=${query}`
+  );
+
+  return response.json() as Promise<{ series: ChannelSeries[] }>;
+}

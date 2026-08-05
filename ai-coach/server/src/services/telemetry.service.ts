@@ -38,6 +38,37 @@ function closeConn(conn: duckdb.Connection) {
   conn.close();
 }
 
+// Apre una connessione, la passa a `fn` e la chiude comunque vada.
+//
+// Esiste per dare agli altri servizi (il digest per il coach) l'accesso
+// allo stesso file senza esportare openDb e closeConn separatamente: una
+// connessione lasciata aperta trattiene il .duckdb e su Windows ne
+// impedisce la cancellazione, esattamente il bug che releaseDuckDbFile
+// risolve.
+export async function withConnection<T>(
+  filePath: string,
+  fn: (conn: duckdb.Connection) => Promise<T>
+): Promise<T> {
+  const database = await openDb(filePath);
+  const conn = database.connect();
+
+  try {
+    return await fn(conn);
+  } finally {
+    closeConn(conn);
+  }
+}
+
+// Esegue una query sulla connessione passata. Serve ai servizi che
+// costruiscono le proprie query ma non devono conoscere l'API a callback
+// del driver legacy.
+export function queryAll<T = any>(
+  conn: duckdb.Connection,
+  sql: string
+): Promise<T[]> {
+  return all<T>(conn, sql);
+}
+
 // DuckDB restituisce gli interi a 64 bit come BigInt, e JSON.stringify
 // lancia "Do not know how to serialize a BigInt": è così che ogni import
 // finiva in stato "error". Le colonne dei file di telemetria sono
@@ -115,9 +146,11 @@ export async function inspectDuckDbFile(
 // Indispensabile prima di cancellarlo: su Windows l'unlink di un file
 // ancora aperto fallisce con EBUSY, e la cache di openDb lo tiene
 // aperto per tutta la vita del processo.
+// La cache del digest sta nel suo modulo e non viene toccata da qui:
+// importarla creerebbe un ciclo, perche' il digest importa da questo
+// file. La svuotano le route che cancellano, chiamando `forgetDigest`
+// accanto a questa funzione.
 export async function releaseDuckDbFile(filePath: string) {
-  summaryCache.delete(filePath);
-
   const cached = dbCache.get(filePath);
   if (!cached) return;
 
@@ -173,15 +206,107 @@ async function fetchChannels(conn: duckdb.Connection): Promise<ChannelMeta[]> {
 
 export async function getChannelsList(
   filePath: string
-): Promise<ChannelMeta[]> {
-  const database = await openDb(filePath);
-  const conn = database.connect();
+): Promise<ChannelShape[]> {
+  return withConnection(filePath, (conn) => fetchChannelShapes(conn));
+}
 
-  try {
-    return await fetchChannels(conn);
-  } finally {
-    closeConn(conn);
+// I canali per ruota hanno quattro colonne invece di una.
+//
+// La tabella di un canale singolo ha la sola colonna `value`, quella di
+// un canale per ruota ha `value1`..`value4`: leggere `value` su
+// TyresPressure fallisce con "column not found". Sono quindici dei
+// cinquantotto canali, quindi non e' un caso limite.
+//
+// L'ordine delle ruote e' quello di rFactor 2 che LMU eredita:
+// anteriore sinistra, anteriore destra, posteriore sinistra, posteriore
+// destra. Verificato su un file reale con `Brakes Temp`, dove le prime
+// due colonne toccano 556 C e le altre due 478 C — gli anteriori
+// scaldano sempre di piu' — e con `WheelsDetached`, che dopo un incidente
+// segna la terza colonna mentre l'usura della stessa ruota crolla a zero.
+export const WHEEL_LABELS = ["AS", "AD", "PS", "PD"] as const;
+
+export type ChannelShape = ChannelMeta & {
+  // "value", oppure "value1".."value4" per i canali per ruota.
+  columns: string[];
+  // Etichette leggibili, una per colonna.
+  labels: string[];
+  // I canali BOOLEAN (`TC`) vanno castati prima di qualsiasi media:
+  // DuckDB rifiuta AVG su BOOLEAN e il driver li restituisce come
+  // true/false, che in un grafico varrebbero NaN.
+  boolean: boolean;
+};
+
+// Legge in un colpo solo la forma di TUTTE le tabelle del file, invece
+// di interrogare information_schema una volta per canale: con
+// cinquantotto canali sarebbero cinquantotto round-trip per disegnare un
+// grafico.
+export async function fetchChannelShapes(
+  conn: duckdb.Connection
+): Promise<ChannelShape[]> {
+  const channels = await fetchChannels(conn);
+
+  const columnRows = await all<{
+    table_name: string;
+    column_name: string;
+    data_type: string;
+  }>(
+    conn,
+    `SELECT table_name, column_name, data_type
+     FROM information_schema.columns
+     WHERE table_schema = 'main'
+     ORDER BY table_name, ordinal_position`
+  );
+
+  const byTable = new Map<string, { name: string; type: string }[]>();
+
+  for (const row of columnRows) {
+    const list = byTable.get(row.table_name) ?? [];
+    list.push({ name: row.column_name, type: row.data_type });
+    byTable.set(row.table_name, list);
   }
+
+  return channels.map((channel) => {
+    // `ts` compare solo nelle tabelle degli eventi, ma escluderlo qui
+    // costa nulla e evita di trattarlo come una serie di dati.
+    const columns = (byTable.get(channel.name) ?? []).filter(
+      (c) => c.name !== "ts"
+    );
+
+    const perWheel = columns.length === 4;
+
+    return {
+      ...channel,
+      columns: columns.map((c) => c.name),
+      labels: perWheel ? [...WHEEL_LABELS] : [channel.name],
+      boolean: columns.some((c) => c.type.toUpperCase() === "BOOLEAN"),
+    };
+  });
+}
+
+// Un canale qualsiasi, gia' castato a DOUBLE e limitato a un intervallo
+// di indici. Restituisce un array per colonna: uno solo per i canali
+// singoli, quattro per quelli per ruota.
+async function fetchChannelMatrix(
+  conn: duckdb.Connection,
+  shape: ChannelShape,
+  startIdx: number,
+  endIdx: number
+): Promise<number[][]> {
+  if (shape.columns.length === 0) return [];
+
+  const selected = shape.columns
+    .map((c, i) => `CAST("${c}" AS DOUBLE) AS c${i}`)
+    .join(", ");
+
+  const rows = await all<Record<string, number>>(
+    conn,
+    `SELECT ${selected} FROM (
+       SELECT *, ROW_NUMBER() OVER () - 1 AS __idx FROM "${shape.name}"
+     ) WHERE __idx BETWEEN ${startIdx} AND ${endIdx}
+     ORDER BY __idx ASC`
+  );
+
+  return shape.columns.map((_, i) => rows.map((r) => r[`c${i}`]));
 }
 
 export async function getMetadata(
@@ -422,135 +547,85 @@ export async function getLapTelemetrySeries(
   }
 }
 
-export type TelemetrySummary = {
-  trackName: string | null;
-  carName: string | null;
-  lapsAnalyzed: number;
-  bestLap: {
-    lapNumber: number;
-    lapTimeSeconds: number;
-    topSpeedKmh: number;
-    avgThrottlePct: number;
-    avgBrakePct: number;
-  } | null;
+export type ChannelSeries = {
+  name: string;
+  unit: string;
+  frequency: number;
+  labels: string[];
+  // Una serie per colonna (quattro per i canali per ruota), gia'
+  // riportata sulla griglia a 10Hz del giro: stessa lunghezza e stessi
+  // istanti dei punti di getLapTelemetrySeries, cosi' il cursore della
+  // pagina Telemetria vale per tutti i grafici insieme.
+  values: number[][];
 };
 
-// Cache per file: il riassunto non cambia finché il file .duckdb resta
-// lo stesso (un nuovo import = un nuovo filePath), quindi non serve
-// invalidarla finché il server è in esecuzione.
-const summaryCache = new Map<string, TelemetrySummary>();
+// Serve al selettore di canali dell'interfaccia: qualsiasi canale del
+// file, non solo i tre cablati in getLapTelemetrySeries.
+export async function getLapChannelSeries(
+  filePath: string,
+  lapNumber: number,
+  names: string[]
+): Promise<ChannelSeries[]> {
+  if (names.length === 0) return [];
 
-// Riassunto compatto usato nel prompt del coach: NON i dati grezzi
-// (troppo pesanti e inutili per il modello), solo le statistiche del
-// giro migliore. Riusa la stessa logica di rilevamento giri via
-// "Lap Dist" già validata per la mappa.
-export async function getTelemetrySummary(
-  filePath: string
-): Promise<TelemetrySummary> {
-  const cached = summaryCache.get(filePath);
-  if (cached) return cached;
-
-  const database = await openDb(filePath);
-  const conn = database.connect();
-
-  try {
-    const channels = await fetchChannels(conn);
-    const freqOf = (name: string) =>
-      channels.find((c) => c.name === name)?.frequency ?? null;
-    const gpsFreq = freqOf("GPS Latitude") ?? 10;
+  return withConnection(filePath, async (conn) => {
+    const shapes = await fetchChannelShapes(conn);
+    const channels: ChannelMeta[] = shapes;
 
     const segments = await computeLapSegments(conn, channels);
+    const segment = segments[lapNumber - 1];
 
-    const speedFreq = freqOf("Ground Speed") ?? gpsFreq;
-    const throttleFreq = freqOf("Throttle Pos") ?? gpsFreq;
-    const brakeFreq = freqOf("Brake Pos") ?? gpsFreq;
-
-    const speeds = await fetchWholeChannel(conn, "Ground Speed");
-    const throttles = await fetchWholeChannel(conn, "Throttle Pos");
-    const brakes = await fetchWholeChannel(conn, "Brake Pos");
-
-    function sliceFor(freq: number, values: number[], segment: LapSegment) {
-      const startTime = segment.startIdx / gpsFreq;
-      const endTime = (segment.endIdx + 1) / gpsFreq;
-      const startIdx = Math.floor(startTime * freq);
-      const endIdx = Math.min(values.length - 1, Math.ceil(endTime * freq) - 1);
-
-      if (endIdx < startIdx) return [];
-      return values.slice(startIdx, endIdx + 1);
+    if (!segment) {
+      throw new Error(`Giro ${lapNumber} non trovato nel file`);
     }
 
-    type LapStat = {
-      lapNumber: number;
-      lapTimeSeconds: number;
-      topSpeedKmh: number;
-      avgThrottlePct: number;
-      avgBrakePct: number;
-    };
+    const gridFreq =
+      channels.find((c) => c.name === "GPS Latitude")?.frequency ?? 10;
+    const gridLength = segment.endIdx - segment.startIdx + 1;
+    const startTs = segment.startIdx / gridFreq;
+    const endTs = (segment.endIdx + 1) / gridFreq;
 
-    const lapStats: LapStat[] = [];
+    const series: ChannelSeries[] = [];
 
-    for (const segment of analysableLaps(segments)) {
-      const lapTimeSeconds = (segment.endIdx - segment.startIdx + 1) / gpsFreq;
+    for (const name of names) {
+      const shape = shapes.find((s) => s.name === name);
+      // Un nome sconosciuto viene ignorato invece di far fallire tutta
+      // la richiesta: l'elenco arriva dalla query string e basta un
+      // canale assente in questo file per lasciare la pagina vuota.
+      if (!shape || shape.columns.length === 0) continue;
 
-      // Filtra giri troppo corti: probabile uscita/rientro ai box o
-      // formation lap parziale, non un giro cronometrato reale.
-      if (lapTimeSeconds < 20) continue;
+      const startIdx = Math.floor(startTs * shape.frequency);
+      const endIdx = Math.max(
+        startIdx,
+        Math.ceil(endTs * shape.frequency) - 1
+      );
 
-      const speedSlice = sliceFor(speedFreq, speeds, segment);
-      const throttleSlice = sliceFor(throttleFreq, throttles, segment);
-      const brakeSlice = sliceFor(brakeFreq, brakes, segment);
+      const matrix = await fetchChannelMatrix(conn, shape, startIdx, endIdx);
+      if (matrix.length === 0 || matrix[0].length === 0) continue;
 
-      const topSpeedKmh = speedSlice.length ? Math.max(...speedSlice) : 0;
-      const avgThrottlePct = throttleSlice.length
-        ? throttleSlice.reduce((a, b) => a + b, 0) / throttleSlice.length
-        : 0;
-      const avgBrakePct = brakeSlice.length
-        ? brakeSlice.reduce((a, b) => a + b, 0) / brakeSlice.length
-        : 0;
+      const aligned = matrix.map((column) =>
+        Array.from({ length: gridLength }, (_, i) => {
+          const t = (segment.startIdx + i) / gridFreq;
+          const localIdx = Math.round((t - startTs) * shape.frequency);
+          const clamped = Math.min(
+            Math.max(localIdx, 0),
+            column.length - 1
+          );
+          return column[clamped];
+        })
+      );
 
-      lapStats.push({
-        lapNumber: segment.lapNumber,
-        lapTimeSeconds,
-        topSpeedKmh,
-        avgThrottlePct,
-        avgBrakePct,
+      series.push({
+        name: shape.name,
+        unit: shape.unit,
+        frequency: shape.frequency,
+        labels: shape.labels,
+        values: aligned,
       });
     }
 
-    const bestLap =
-      lapStats.length > 0
-        ? lapStats.reduce((best, cur) =>
-            cur.lapTimeSeconds < best.lapTimeSeconds ? cur : best
-          )
-        : null;
-
-    const metadataRows = await all<{ key: string; value: string }>(
-      conn,
-      `SELECT "key", "value" FROM metadata`
-    );
-    const metadata: Record<string, string> = {};
-    for (const r of metadataRows) metadata[r.key] = r.value;
-
-    const summary: TelemetrySummary = {
-      trackName: metadata["TrackName"] ?? null,
-      carName: metadata["CarName"] ?? null,
-      lapsAnalyzed: lapStats.length,
-      bestLap: bestLap
-        ? {
-            lapNumber: bestLap.lapNumber,
-            lapTimeSeconds: Math.round(bestLap.lapTimeSeconds * 1000) / 1000,
-            topSpeedKmh: Math.round(bestLap.topSpeedKmh * 10) / 10,
-            avgThrottlePct: Math.round(bestLap.avgThrottlePct * 10) / 10,
-            avgBrakePct: Math.round(bestLap.avgBrakePct * 10) / 10,
-          }
-        : null,
-    };
-
-    summaryCache.set(filePath, summary);
-    return summary;
-  } finally {
-    closeConn(conn);
-  }
+    return series;
+  });
 }
 
 // ---------------------------------------------------------------------

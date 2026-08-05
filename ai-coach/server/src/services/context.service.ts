@@ -122,6 +122,330 @@ function buildTrackSection(track: any) {
 }
 
 import { describeAdjustableSettingsByArea } from "./svm.service";
+import type {
+  TelemetryDigest,
+  WheelValues,
+} from "./telemetry-digest.service";
+
+// Le quattro ruote nell'ordine del file: AS, AD, PS, PD.
+function wheels(values: WheelValues | null, unit: string): string | null {
+  if (!values) return null;
+  return `${values[0]}/${values[1]}/${values[2]}/${values[3]} ${unit}`;
+}
+
+// Una riga per giro. Serve a far vedere l'ANDAMENTO — gomme che salgono,
+// freni che scaldano, energia che cala — che in un riassunto del solo
+// giro migliore sparirebbe.
+function buildLapLines(digest: TelemetryDigest): string[] {
+  return digest.laps.map((lap) => {
+    const parts = [`${lap.lapTimeSeconds}s`];
+
+    if (lap.topSpeedKmh) parts.push(`max ${lap.topSpeedKmh} km/h`);
+    const tyres = wheels(lap.tyreTempC, "C");
+    if (tyres) parts.push(`gomme ${tyres}`);
+    const brakes = wheels(lap.brakeTempC, "C");
+    if (brakes) parts.push(`freni ${brakes}`);
+    if (lap.virtualEnergyDeltaPct !== null) {
+      parts.push(`energia ${lap.virtualEnergyDeltaPct}%`);
+    }
+    if (lap.tcActivePct !== null) parts.push(`TC ${lap.tcActivePct}%`);
+    if (lap.offTrackSeconds) parts.push(`fuori ${lap.offTrackSeconds}s`);
+
+    const marker = lap.isBest ? " (migliore)" : "";
+
+    return `- Giro ${lap.lapNumber}${marker}: ${parts.join(", ")}`;
+  });
+}
+
+function buildTyreLines(digest: TelemetryDigest): string[] {
+  const tyres = digest.tyres;
+  if (!tyres) return [];
+
+  const lines = ["Gomme nel giro migliore:"];
+
+  lines.push(`- Temperatura media: ${wheels(tyres.avgTempC, "C")}`);
+  lines.push(`- Picco: ${wheels(tyres.peakTempC, "C")}`);
+
+  if (tyres.innerMinusOuterC) {
+    lines.push(
+      `- Battistrada interno meno esterno: ${wheels(
+        tyres.innerMinusOuterC,
+        "C"
+      )}. Positivo vuol dire che l'interno lavora piu' caldo, cioe' ` +
+        "troppo camber negativo o troppa poca pressione; negativo il " +
+        "contrario. Sotto i 5 C di differenza la ruota lavora piatta."
+    );
+  }
+
+  const pressure = wheels(tyres.pressureKPa, "kPa");
+  if (pressure) lines.push(`- Pressione media: ${pressure}`);
+
+  const wear = wheels(tyres.wearPct, "%");
+  if (wear) lines.push(`- Battistrada residuo a fine giro: ${wear}`);
+
+  return lines;
+}
+
+function buildBrakingLines(digest: TelemetryDigest): string[] {
+  const braking = digest.braking;
+  if (!braking) return [];
+
+  const lines = ["Frenata nel giro migliore:"];
+
+  lines.push(
+    `- Pressione massima ${braking.maxPressurePct}%, media in frenata ` +
+      `${braking.avgPressureWhileBrakingPct}%`
+  );
+  lines.push(
+    `- ${braking.brakingSeconds}s col freno premuto, il ` +
+      `${braking.brakingSharePct}% del giro`
+  );
+
+  if (
+    braking.trailBrakingSharePct !== null &&
+    braking.avgTrailPressurePct !== null
+  ) {
+    lines.push(
+      `- Trail braking: il pilota tiene il freno nel ` +
+        `${braking.trailBrakingSharePct}% del tempo in cui l'auto e' gia' ` +
+        `oltre 0.6G laterali, con ${braking.avgTrailPressurePct}% medio`
+    );
+  }
+
+  if (braking.pedalOverlapSeconds > 0) {
+    lines.push(
+      `- Gas e freno premuti insieme per ${braking.pedalOverlapSeconds}s`
+    );
+  }
+
+  if (braking.lockupCount !== null) {
+    lines.push(
+      braking.lockupCount === 0
+        ? "- Nessun bloccaggio rilevato"
+        : `- ${braking.lockupCount} bloccaggi, ${braking.lockupSeconds}s ` +
+            "complessivi (ruota sotto l'85% della velocita' dell'auto)"
+    );
+  }
+
+  if (braking.frontTempC && braking.rearTempC) {
+    lines.push(
+      `- Picco temperatura dischi: ${braking.frontTempC[0]}/` +
+        `${braking.frontTempC[1]} C davanti, ${braking.rearTempC[0]}/` +
+        `${braking.rearTempC[1]} C dietro`
+    );
+  }
+
+  if (braking.biasRearPct !== null) {
+    const migration =
+      braking.migration !== null ? `, migration ${braking.migration}` : "";
+
+    lines.push(
+      `- Ripartitore impostato al ${braking.biasRearPct}% sul posteriore` +
+        migration
+    );
+  }
+
+  return lines;
+}
+
+function buildEnergyLines(digest: TelemetryDigest): string[] {
+  const energy = digest.energy;
+  if (!energy) return [];
+
+  const lines = ["Motore ed energia nel giro migliore:"];
+
+  if (
+    energy.virtualEnergyFromPct !== null &&
+    energy.virtualEnergyToPct !== null
+  ) {
+    lines.push(
+      `- Virtual Energy da ${energy.virtualEnergyFromPct}% a ` +
+        `${energy.virtualEnergyToPct}%`
+    );
+  }
+
+  if (energy.socFromPct !== null && energy.socToPct !== null) {
+    lines.push(
+      `- Batteria da ${energy.socFromPct}% a ${energy.socToPct}%, minimo ` +
+        `${energy.socMinPct}% durante il giro`
+    );
+  }
+
+  if (energy.avgRecoveryKw !== null || energy.avgDeploymentKw !== null) {
+    lines.push(
+      `- Ibrido: ${energy.avgRecoveryKw ?? "-"} kW medi recuperati in ` +
+        `frenata, ${energy.avgDeploymentKw ?? "-"} kW medi erogati in ` +
+        "accelerazione"
+    );
+  }
+
+  if (energy.maxRpm !== null) {
+    const limit =
+      energy.engineMaxRpm !== null ? ` su ${energy.engineMaxRpm} massimi` : "";
+    lines.push(`- Regime massimo ${energy.maxRpm} giri${limit}`);
+  }
+
+  if (energy.shifts !== null) {
+    lines.push(
+      `- ${energy.shifts} cambi marcia nel giro, massima usata la ` +
+        `${energy.maxGear}a`
+    );
+  }
+
+  if (energy.fuelUsedL !== null) {
+    lines.push(`- Carburante consumato nel giro: ${energy.fuelUsedL} L`);
+  }
+
+  if (energy.waterTempC !== null || energy.oilTempC !== null) {
+    lines.push(
+      `- Temperature massime: acqua ${energy.waterTempC ?? "-"} C, olio ` +
+        `${energy.oilTempC ?? "-"} C`
+    );
+  }
+
+  return lines;
+}
+
+function buildHandlingLines(digest: TelemetryDigest): string[] {
+  const handling = digest.handling;
+  if (!handling) return [];
+
+  const lines = ["Guida e comportamento dell'auto nel giro migliore:"];
+
+  if (
+    handling.requestedThrottlePct !== null &&
+    handling.deliveredThrottlePct !== null
+  ) {
+    lines.push(
+      `- Gas: il pilota chiede ${handling.requestedThrottlePct}% medio col ` +
+        `piede, al motore ne arriva ${handling.deliveredThrottlePct}%. La ` +
+        "differenza e' il controllo di trazione, non il pilota: sono due " +
+        "canali distinti del file."
+    );
+  }
+
+  if (handling.tcActiveSharePct !== null) {
+    lines.push(
+      `- Il TC interviene per il ${handling.tcActiveSharePct}% del giro`
+    );
+  }
+
+  if (handling.maxLatG !== null || handling.maxBrakingG !== null) {
+    lines.push(
+      `- Picchi: ${handling.maxLatG ?? "-"}G laterali, ` +
+        `${handling.maxBrakingG ?? "-"}G in decelerazione`
+    );
+  }
+
+  if (handling.maxSteeringPct !== null) {
+    lines.push(
+      `- Sterzo: massimo ${handling.maxSteeringPct}% della corsa, ` +
+        `${handling.steeringReversals} inversioni di almeno il 3%, ` +
+        `velocita' media ${handling.avgSteeringRatePctPerSec}%/s. Il numero ` +
+        "di inversioni ha senso solo confrontando giri dello stesso " +
+        "circuito: comprende i normali cambi di curva, non solo le correzioni."
+    );
+  }
+
+  if (handling.offTrackSeconds !== null) {
+    const episodes =
+      handling.offTrackEpisodes === 1
+        ? "1 occasione"
+        : `${handling.offTrackEpisodes} occasioni`;
+
+    lines.push(
+      `- Fuori pista (tutte e quattro le ruote oltre l'asfalto): ` +
+        `${handling.offTrackSeconds}s in ${episodes}. Con almeno una ruota ` +
+        `fuori, ${handling.onKerbSeconds}s: sono i cordoli, e non sono un ` +
+        "errore."
+    );
+  }
+
+  if (
+    handling.minFrontRideHeightMm !== null ||
+    handling.minRearRideHeightMm !== null
+  ) {
+    lines.push(
+      `- Altezze minime da terra: ${handling.minFrontRideHeightMm ?? "-"} mm ` +
+        `davanti, ${handling.minRearRideHeightMm ?? "-"} mm dietro`
+    );
+  }
+
+  return lines;
+}
+
+function buildTelemetrySection(digest: TelemetryDigest | null): string {
+  if (!digest) {
+    return "Nessun dato di telemetria disponibile per l'auto attiva.";
+  }
+
+  const lines: string[] = [];
+
+  const session = [
+    digest.sessionType,
+    digest.weather,
+    digest.airTempC !== null ? `aria ${digest.airTempC} C` : null,
+    digest.trackTempC !== null ? `asfalto ${digest.trackTempC} C` : null,
+  ].filter(Boolean);
+
+  lines.push(
+    `File: ${digest.trackName ?? "-"}, ${digest.carName ?? "-"}.` +
+      (session.length > 0 ? ` Sessione: ${session.join(", ")}.` : "")
+  );
+
+  lines.push(
+    `Giri analizzati: ${digest.lapsAnalyzed} su ${digest.lapsInFile} nel ` +
+      "file (il primo esce dai box e l'ultimo e' troncato, quindi sono " +
+      `esclusi). Giro migliore: giro ${digest.bestLapNumber} in ` +
+      `${digest.bestLapSeconds}s.`
+  );
+
+  const electronics = digest.electronics;
+
+  if (electronics) {
+    const settings = [
+      electronics.tcLevel !== null ? `TC livello ${electronics.tcLevel}` : null,
+      electronics.tcCut !== null ? `taglio ${electronics.tcCut}` : null,
+      electronics.tcSlipAngle !== null
+        ? `angolo di slittamento ${electronics.tcSlipAngle}`
+        : null,
+      electronics.absLevel !== null ? `ABS livello ${electronics.absLevel}` : null,
+      electronics.fuelMixtureMap !== null
+        ? `mappa carburante ${electronics.fuelMixtureMap}`
+        : null,
+    ].filter(Boolean);
+
+    if (settings.length > 0) {
+      lines.push("");
+      // Non stanno nel file .svm: il pilota le cambia dal volante in
+      // pista. Vanno percio' consigliate a parole, mai in setupChanges.
+      lines.push(
+        "Elettronica con cui il pilota e' sceso in pista (dal file, non dal " +
+          "setup: si cambiano dal volante e NON vanno messe in setupChanges): " +
+          settings.join(", ") + "."
+      );
+    }
+  }
+
+  if (digest.laps.length > 0) {
+    lines.push("");
+    lines.push("Andamento dello stint, un giro per riga (ruote AS/AD/PS/PD):");
+    lines.push(...buildLapLines(digest));
+  }
+
+  for (const block of [
+    buildTyreLines(digest),
+    buildBrakingLines(digest),
+    buildEnergyLines(digest),
+    buildHandlingLines(digest),
+  ]) {
+    if (block.length === 0) continue;
+    lines.push("");
+    lines.push(...block);
+  }
+
+  return lines.join("\n");
+}
 
 // I campi del setup con la loro etichetta: elencarli come dati evita
 // tredici righe di stringhe quasi identiche e tiene fuori dal prompt
@@ -258,17 +582,7 @@ export function buildCoachContext(context: any) {
           .join("\n")
       : "Nessuna voce pertinente trovata per questo messaggio.";
 
-  const telemetrySection =
-    telemetry && telemetry.bestLap
-      ? `Pista rilevata dal file: ${telemetry.trackName ?? "-"}
-Giri analizzati: ${telemetry.lapsAnalyzed}
-Giro migliore: Giro ${telemetry.bestLap.lapNumber}, tempo ${
-          telemetry.bestLap.lapTimeSeconds
-        }s
-Velocità massima raggiunta: ${telemetry.bestLap.topSpeedKmh} km/h
-Uso medio acceleratore nel giro migliore: ${telemetry.bestLap.avgThrottlePct}%
-Uso medio freno nel giro migliore: ${telemetry.bestLap.avgBrakePct}%`
-      : "Nessun dato di telemetria disponibile per l'auto attiva.";
+  const telemetrySection = buildTelemetrySection(telemetry);
 
   return `
 Sei un AI Race Engineer professionale.
@@ -326,9 +640,19 @@ Istruzioni:
 - Se proponi modifiche al setup spiega sempre il motivo.
 - Se una voce della Knowledge Base è pertinente, usala come base per il
   consiglio invece di inventare da zero.
-- Se sono disponibili dati di telemetria, usali come riferimento
-  concreto (es. confronta i consigli con la velocità massima o l'uso
-  di freno/acceleratore osservati) invece di parlare in astratto.
+- Se sono disponibili dati di telemetria, parti sempre da lì invece di
+  parlare in astratto: cita il numero che hai visto, non un'impressione.
+  Le temperature delle gomme e la differenza interno-esterno reggono un
+  discorso su camber e pressioni; i picchi dei dischi dicono se i freni
+  sono in finestra; l'andamento giro per giro dice se il problema
+  peggiora con lo stint o c'è da subito.
+- Non inventare valori che nella sezione TELEMETRIA non ci sono. Se un
+  dato manca (auto senza ibrido, canale assente nel file) dillo e chiedi
+  cosa ti serve, invece di stimarlo.
+- I dati della telemetria descrivono il giro migliore e lo stint di UN
+  file. Non trattarli come una costante dell'auto: se il pilota descrive
+  un problema che i dati non mostrano, può semplicemente essere successo
+  in un'altra sessione.
 - **Chiama sempre le curve per numero**: "curva 7", mai "la curva a
   3588 m". Le distanze nel profilo servono a te per riconoscerle e per
   ragionare sulle staccate, ma al pilota non dicono nulla: lui in pista

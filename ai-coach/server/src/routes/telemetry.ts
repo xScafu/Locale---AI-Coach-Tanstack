@@ -12,6 +12,7 @@ import {
 
 import {
   getChannelsList,
+  getLapChannelSeries,
   getLaps,
   getLapTelemetrySeries,
   getMetadata,
@@ -19,6 +20,8 @@ import {
   releaseDuckDbFile,
   runReadOnlyQuery,
 } from "../services/telemetry.service";
+
+import { forgetDigest } from "../services/telemetry-digest.service";
 
 import { syncImportFromMetadata } from "../services/import-sync.service";
 
@@ -81,6 +84,7 @@ telemetry.delete("/orphans", async (c) => {
   for (const orphan of orphans) {
     try {
       await releaseDuckDbFile(orphan.fullPath);
+      forgetDigest(orphan.fullPath);
       await rm(orphan.fullPath, { force: true });
       deleted++;
       freedBytes += orphan.bytes;
@@ -217,6 +221,26 @@ telemetry.get("/:id/metadata", async (c) => {
   }
 });
 
+// L'elenco dei canali del file, con frequenza, unita' e forma: serve al
+// selettore della pagina Telemetria per sapere cosa si puo' graficare e
+// quali canali hanno quattro tracce invece di una.
+telemetry.get("/:id/channels", async (c) => {
+  const id = c.req.param("id");
+  const item = await getTelemetryImportById(id);
+
+  if (!item) {
+    return c.json({ error: "Import not found" }, 404);
+  }
+
+  try {
+    const channels = await getChannelsList(item.filePath);
+    return c.json({ channels });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Errore sconosciuto";
+    return c.json({ error: message }, 500);
+  }
+});
+
 telemetry.get("/:id/laps", async (c) => {
   const id = c.req.param("id");
   const item = await getTelemetryImportById(id);
@@ -257,6 +281,40 @@ telemetry.get("/:id/laps/:lapNumber", async (c) => {
   }
 });
 
+// Le serie di canali arbitrari per un giro, gia' allineate alla stessa
+// griglia dei punti di /:id/laps/:lapNumber: il cursore della pagina
+// vale per tutti i grafici insieme.
+telemetry.get("/:id/laps/:lapNumber/channels", async (c) => {
+  const id = c.req.param("id");
+  const lapNumber = Number(c.req.param("lapNumber"));
+
+  if (!Number.isInteger(lapNumber) || lapNumber < 1) {
+    return c.json({ error: "lapNumber non valido" }, 400);
+  }
+
+  const names = (c.req.query("names") ?? "")
+    .split(",")
+    .map((n) => n.trim())
+    .filter(Boolean);
+
+  if (names.length === 0) {
+    return c.json({ error: "names è obbligatorio" }, 400);
+  }
+
+  const item = await getTelemetryImportById(id);
+  if (!item) {
+    return c.json({ error: "Import not found" }, 404);
+  }
+
+  try {
+    const series = await getLapChannelSeries(item.filePath, lapNumber, names);
+    return c.json({ series });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Errore sconosciuto";
+    return c.json({ error: message }, 500);
+  }
+});
+
 telemetry.delete("/:id", async (c) => {
   const id = c.req.param("id");
 
@@ -276,6 +334,10 @@ telemetry.delete("/:id", async (c) => {
 
   try {
     await releaseDuckDbFile(item.filePath);
+    // La cache del digest vive nel suo modulo e releaseDuckDbFile non la
+    // vede: importarla da telemetry.service creerebbe un ciclo, perche'
+    // il digest importa da li'.
+    forgetDigest(item.filePath);
     await rm(item.filePath, { force: true });
   } catch (error) {
     // L'import e' comunque sparito dal DB: il file rimasto indietro

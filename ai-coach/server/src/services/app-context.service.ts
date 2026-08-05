@@ -7,17 +7,18 @@ import { getSessionMemory } from "./memory.service";
 import { searchKnowledgeEntries } from "../repositories/knowledge.repository";
 import { getTelemetryImports } from "../repositories/telemetry.repository";
 import {
-  getTelemetrySummary,
-  type TelemetrySummary,
-} from "./telemetry.service";
+  getTelemetryDigest,
+  type TelemetryDigest,
+} from "./telemetry-digest.service";
 
 // Se l'auto attiva ha un import di telemetria già analizzato, recupera
-// il riassunto sintetico del giro migliore per arricchire il contesto
-// del coach. Eventuali errori (file mancante/corrotto) non devono mai
-// bloccare la chat: in caso di problemi, telemetry resta null.
+// il digest — una riga per giro più il giro migliore aperto per famiglia
+// — per arricchire il contesto del coach. Eventuali errori (file
+// mancante/corrotto) non devono mai bloccare la chat: in caso di
+// problemi, telemetry resta null.
 async function loadTelemetrySummary(
   carId: string | undefined
-): Promise<TelemetrySummary | null> {
+): Promise<TelemetryDigest | null> {
   if (!carId) return null;
 
   try {
@@ -26,7 +27,7 @@ async function loadTelemetrySummary(
 
     if (!latestParsed) return null;
 
-    return await getTelemetrySummary(latestParsed.filePath);
+    return await getTelemetryDigest(latestParsed.filePath);
   } catch {
     return null;
   }

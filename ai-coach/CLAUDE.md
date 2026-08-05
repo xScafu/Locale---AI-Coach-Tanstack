@@ -197,6 +197,70 @@ toccarla. I canali hanno frequenze diverse e vengono riallineati per indice tram
 
 L'upload passa da un `bodyLimit` dedicato di 200 MB in `index.ts`.
 
+### Le due famiglie di tabelle del file
+
+Un file reale ha 101 tabelle, ed è un errore trattarle allo stesso modo:
+
+- I **58 canali** elencati in `channelsList` sono serie continue senza `ts`: si
+  allineano **per indice**, dividendo per la frequenza. Quindici di questi sono
+  **per ruota** e hanno `value1`..`value4` invece di `value`: `fetchWholeChannel`
+  legge `value` e su `TyresPressure` fallisce con "column not found". Per leggerli
+  serve `fetchChannelShapes`, che ricava la forma di tutte le tabelle con una
+  query sola.
+- I **40 eventi** di `eventsList` hanno `ts` + `value`, ma **quasi nessuno è un
+  evento**: trentacinque hanno una riga sola, scritta all'avvio. Sono le
+  *regolazioni* con cui il pilota è sceso in pista — `TCLevel`, `ABSLevel`,
+  `Brake Bias Rear`, `FuelMixtureMap`, `Engine Max RPM`. Non stanno nel `.svm`
+  perché si cambiano dal volante, quindi il coach le riceve ma ha l'ordine
+  esplicito di non metterle in `setupChanges`.
+
+**L'ordine delle ruote è AS, AD, PS, PD** (anteriore sinistra, anteriore destra,
+posteriore sinistra, posteriore destra), quello di rFactor 2 che LMU eredita.
+Verificato su un file reale: `Brakes Temp` tocca 556 °C sulle prime due colonne e
+478 °C sulle altre due — gli anteriori scaldano sempre di più — e dopo un incidente
+`WheelsDetached` segna `value3` mentre l'usura della stessa ruota crolla a zero.
+
+**`GPS Time` è l'unico canale con il tempo assoluto** e il suo primo campione
+coincide con il `ts` del primo evento. È il modo per agganciare un evento a un giro:
+senza, gli eventi hanno un orologio di sessione e i canali un indice, e i due non si
+parlano.
+
+### Il digest per il coach
+
+`services/telemetry-digest.service.ts` produce quello che finisce nella sezione
+`===== TELEMETRIA =====`: **una riga per giro** più il giro migliore aperto per
+famiglia (gomme, frenata, energia, guida). Prima erano cinque numeri; ora sono ~46
+righe, circa 780 token, e la risposta del coach resta sui 20 secondi.
+
+La divisione del lavoro è dettata dal costo di marshalling del driver: i sei canali
+che servono su **tutti** i giri si leggono interi una volta e si affettano in JS;
+gli altri diciannove si leggono già ritagliati sul solo giro migliore. Leggere
+venticinque canali interi vorrebbe dire milioni di righe convertite in oggetti JS.
+
+Ogni campo è nullable e una sezione vuota **sparisce** dal prompt: una GT3 non ha
+`Virtual Energy` né `Regen Rate`, e mostrarli a zero sarebbe peggio che tacerli.
+
+Quattro trappole dei dati, tutte trovate confrontando i canali tra loro:
+
+- **`Regen Rate` ha segno e unità diversi da quelli dichiarati.** In frenata la media
+  è +112.700, in accelerazione −45.400: positivo è *recupero*, negativo è
+  *erogazione*, e i valori sono **watt**, non i kW scritti in `channelsList`
+  (194 kW di picco, coerenti con l'MGU di una Hypercar).
+- **`Throttle Pos` è il gas dopo il controllo di trazione, `Throttle Pos Unfiltered`
+  è il piede del pilota.** Quando il TC interviene (20% dei campioni) il pilota
+  chiede 51.5% e al motore arriva 24.1%. Differiscono su 17.578 campioni su 40.858:
+  chiamare il canale filtrato "uso acceleratore del pilota" attribuisce a lui quello
+  che fa l'elettronica.
+- **`Gear` conta doppio.** Il cambio passa per la folle a ogni innesto e la registra
+  come evento a sé, 37 ms prima della marcia vera: in un file reale 288 eventi a
+  zero su 576 esatti. I cambi sono gli eventi con valore diverso da zero.
+- **`SurfaceTypes` va letto per numero di ruote.** "Almeno una ruota fuori
+  dall'asfalto" fa 119 s su 817, il 15% della sessione: sono i cordoli, cioè guida
+  normale, e passarli al coach come fuori pista lo porterebbe a rimproverare il
+  pilota a ogni giro. "Tutte e quattro" fa 4.8 s ed è il fuori pista vero. Le due
+  misure non sono simmetriche nemmeno per ruota: le destre stanno fuori tre volte
+  più delle sinistre, perché i cordoli si prendono da un lato solo.
+
 ### Import: un file configura l'app
 
 `POST /api/telemetry/import` non salva solo un file: `import-sync.service.ts` legge i
@@ -273,9 +337,10 @@ e quindi non distingue nulla.
 somma parziale sembrerebbe un giro teorico strepitoso mentre è solo incompleta.
 
 **Limite noto.** Un giro in cui il pilota taglia una chicane risulta più veloce in quella
-curva e finisce tra i "massimi personali". Il file espone `SurfaceTypes` (5 Hz) e
-`Track Edge` (10 Hz), che permetterebbero di scartare i giri fuori pista: non è ancora
-implementato.
+curva e finisce tra i "massimi personali". Il digest **misura** ora il fuori pista da
+`SurfaceTypes` (vedi sopra il criterio delle quattro ruote), ma `computeReference` non
+lo usa ancora per scartare i giri: il riferimento per curva resta quindi falsabile da un
+taglio.
 
 **Il primo e l'ultimo giro non entrano mai nelle analisi** (`analysableLaps`): il primo
 esce dai box, l'ultimo è quasi sempre il frammento troncato di fine registrazione — in un
@@ -336,9 +401,13 @@ inutile "giro 8".
   `:root` per il chiaro e `.dark` per lo scuro — vanno sempre aggiornati in coppia.
 - La **sidebar è scura in entrambi i temi**: usa i token `--sidebar-*`, che nel tema
   chiaro sono volutamente scuri.
-- I `--chart-*` sono assegnati per canale di telemetria (1 freno, 2 gas, 3 velocità) e
-  vanno tenuti stabili tra le pagine, altrimenti lo stesso canale cambia colore da un
-  grafico all'altro.
+- I `--chart-*` sono assegnati per canale di telemetria (1 freno, 2 gas, 3 velocità,
+  4 cursore, 5 canale scelto dal selettore) e vanno tenuti stabili tra le pagine,
+  altrimenti lo stesso canale cambia colore da un grafico all'altro.
+- I `--wheel-*` sono un asse diverso: identificano la **ruota** (AS, AD, PS, PD) nei
+  canali che ne hanno quattro. Sono separati dai `--chart-*` apposta — riusare il rosso
+  del freno per l'anteriore sinistra farebbe leggere il grafico come se parlasse di
+  freno.
 - `--font-mono` è impostato per tempi sul giro e valori di telemetria: cifre a larghezza
   fissa, così i numeri non "ballano" mentre si aggiornano.
 - **Il padding di pagina lo mette `AppLayout`** (`max-w-7xl p-6`). Le pagine partono da
@@ -371,3 +440,9 @@ inutile "giro 8".
 - Le query DuckDB in `telemetry.service.ts` sono costruite per interpolazione di stringa
   (i nomi di tabella/canale vengono dal file caricato); `runReadOnlyQuery` esegue SQL
   arbitrario dal client aggiungendo solo un `LIMIT 200` se manca.
+- **`npm run build:server` non compila** (98 errori già su `main`): `tsconfig.json` del
+  server usa `moduleResolution: NodeNext`, che pretende l'estensione `.js` in ogni import
+  relativo, mentre il codice non la mette da nessuna parte. Non è emerso prima perché
+  `dev` gira su `tsx`, che se ne infischia. Per controllare davvero i tipi del server
+  serve un tsconfig di servizio con `moduleResolution: Bundler` — con quello gli errori
+  sono zero.
