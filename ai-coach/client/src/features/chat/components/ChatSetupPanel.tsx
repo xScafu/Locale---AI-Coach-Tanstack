@@ -27,24 +27,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
-// "FRONTLEFT.CamberSetting" -> "Frontleft · Camber". Il percorso grezzo
-// e' preciso ma illeggibile in una colonna stretta.
-function settingLabel(path: string | undefined) {
-  // Difesa contro dati inattesi: un suggerimento senza "setting" faceva
-  // esplodere l'intera scheda invece di degradare la singola riga.
-  if (typeof path !== "string" || !path) return "Regolazione sconosciuta";
+// Il nome leggibile arriva dal server insieme alla modifica. Qui resta
+// solo la difesa: un suggerimento senza "setting" faceva esplodere
+// l'intera scheda invece di degradare la singola riga.
+function changeLabel(change: SetupChange) {
+  if (change.label) return change.label;
 
-  const [section, key] = path.split(".");
-
-  if (!key) return path;
-
-  const readable = key
-    .replace(/Setting$/, "")
-    .replace(/([a-z])([A-Z])/g, "$1 $2");
-
-  const place = section.charAt(0) + section.slice(1).toLowerCase();
-
-  return `${place} · ${readable}`;
+  return typeof change.setting === "string" && change.setting
+    ? change.setting
+    : "Regolazione sconosciuta";
 }
 
 function UploadSetupButton({
@@ -229,7 +220,7 @@ function Suggestions({
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="truncate text-sm font-medium">
-                  {settingLabel(change.setting)}
+                  {changeLabel(change)}
                 </span>
 
                 <span

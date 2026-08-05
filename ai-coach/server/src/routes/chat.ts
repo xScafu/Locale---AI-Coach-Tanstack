@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { askCoach } from "../services/openai.service";
 import { saveMessage } from "../repositories/message.repository";
 import { checkMemoryUpdate } from "../services/memory.manager";
+import { withSettingLabels } from "../services/svm.service";
 
 const chat = new Hono();
 
@@ -46,9 +47,10 @@ chat.post("/", async (c) => {
   return c.json({
     sessionId,
     answer: result.text,
-    // Modifiche al setup proposte in questa risposta, gia' strutturate:
-    // la scheda Setup le mostra come "attuale -> suggerito".
-    setupChanges: result.setupChanges,
+    // Modifiche al setup proposte in questa risposta, gia' strutturate.
+    // L'etichetta leggibile viene aggiunta qui e non duplicata lato
+    // client: la mappa dei nomi vive in un posto solo.
+    setupChanges: withSettingLabels(result.setupChanges),
     usage: result.usage,
   });
 });

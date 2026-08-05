@@ -173,7 +173,8 @@ estensione .svm esportato da Le Mans Ultimate.`;
     lines.push("");
     lines.push(
       "Regolazioni disponibili su questa auto, nel formato " +
-        "SEZIONE.Chiave = indice (valore attuale). Sono TUTTE modificabili:"
+        "Nome leggibile — SEZIONE.Chiave = indice (valore attuale). " +
+        "Sono TUTTE modificabili:"
     );
 
     for (const area of areas) {
@@ -189,8 +190,13 @@ sull'indice, e la scala che lega indice e valore leggibile cambia da
 auto ad auto. Non proporre quindi un valore finale, ma di quanti click
 muovere: nel campo setupChanges usa "setting" con il percorso ESATTO
 copiato dall'elenco qui sopra e "deltaClicks" con lo spostamento
-(negativo per scendere). Nella prosa spiega la modifica anche in termini
-comprensibili, citando il valore attuale.
+(negativo per scendere).
+
+Nella prosa NON scrivere mai il percorso del file: usa il nome
+leggibile, cioe' quello prima del trattino nell'elenco. Si dice "ala
+posteriore" e "ripartitore di frenata", non "REARWING.RWSetting" o
+"CONTROLS.RearBrakeSetting" — quei percorsi servono solo al campo
+setting. Cita sempre anche il valore attuale.
 
 Dove l'elenco mostra un percorso che inizia con FRONT. o REAR., quello
 vale gia' per entrambi i lati: usalo cosi' com'e', non scrivere

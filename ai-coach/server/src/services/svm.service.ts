@@ -222,6 +222,110 @@ function relevant(setting: SvmSetting) {
   return isAdjustable(setting) && !IRRELEVANT_KEYS.test(setting.key);
 }
 
+// Nomi leggibili delle regolazioni, al posto delle chiavi del file.
+// "REARWING.RWSetting" non dice nulla al pilota, che nel gioco legge
+// "Ala posteriore".
+//
+// ATTENZIONE: queste etichette sono ricavate dai nomi delle chiavi e
+// dalla terminologia corrente, NON lette dall'interfaccia di LMU. Se una
+// non corrisponde a quello che vedi in gioco, correggila qui: e' l'unico
+// punto in cui compaiono.
+const KEY_LABELS: Record<string, string> = {
+  // Aerodinamica e carrozzeria
+  FWSetting: "Ala anteriore",
+  RWSetting: "Ala posteriore",
+  WaterRadiatorSetting: "Nastro radiatore acqua",
+  OilRadiatorSetting: "Nastro radiatore olio",
+  BrakeDuctSetting: "Condotti freni anteriori",
+  BrakeDuctRearSetting: "Condotti freni posteriori",
+
+  // Sospensioni
+  FrontAntiSwaySetting: "Barra antirollio anteriore",
+  RearAntiSwaySetting: "Barra antirollio posteriore",
+  FrontToeInSetting: "Convergenza anteriore",
+  RearToeInSetting: "Convergenza posteriore",
+  Front3rdPackerSetting: "Tampone terzo elemento anteriore",
+  Rear3rdPackerSetting: "Tampone terzo elemento posteriore",
+  Front3rdSpringSetting: "Molla terzo elemento anteriore",
+  Rear3rdSpringSetting: "Molla terzo elemento posteriore",
+  Front3rdSlowBumpSetting: "Compressione lenta terzo elemento ant.",
+  Rear3rdSlowBumpSetting: "Compressione lenta terzo elemento post.",
+  Front3rdFastBumpSetting: "Compressione veloce terzo elemento ant.",
+  Rear3rdFastBumpSetting: "Compressione veloce terzo elemento post.",
+  Front3rdSlowReboundSetting: "Estensione lenta terzo elemento ant.",
+  Rear3rdSlowReboundSetting: "Estensione lenta terzo elemento post.",
+  Front3rdFastReboundSetting: "Estensione veloce terzo elemento ant.",
+  Rear3rdFastReboundSetting: "Estensione veloce terzo elemento post.",
+
+  // Freni e controlli
+  RearBrakeSetting: "Ripartitore di frenata",
+  BrakeMigrationSetting: "Migrazione frenata",
+  BrakePressureSetting: "Pressione freni",
+  TractionControlMapSetting: "Mappa controllo trazione",
+  TCPowerCutMapSetting: "TC taglio potenza",
+  TCSlipAngleMapSetting: "TC angolo di slittamento",
+  SteerLockSetting: "Blocco sterzo",
+
+  // Motore e ibrido
+  RegenerationMapSetting: "Mappa rigenerazione",
+  ElectricMotorMapSetting: "Mappa motore elettrico",
+  EngineMixtureSetting: "Miscela",
+  EngineBrakingMapSetting: "Freno motore",
+
+  // Trasmissione
+  DiffPowerSetting: "Differenziale in accelerazione",
+  DiffCoastSetting: "Differenziale in rilascio",
+  DiffPreloadSetting: "Precarico differenziale",
+
+  // Per ruota o assale: la posizione viene aggiunta dalla sezione
+  CamberSetting: "Camber",
+  PressureSetting: "Pressione gomme",
+  SpringSetting: "Molla",
+  RideHeightSetting: "Altezza da terra",
+  PackerSetting: "Tampone",
+  SlowBumpSetting: "Compressione lenta",
+  FastBumpSetting: "Compressione veloce",
+  SlowReboundSetting: "Estensione lenta",
+  FastReboundSetting: "Estensione veloce",
+  BrakeDiscSetting: "Disco freno",
+  BrakePadSetting: "Pastiglie",
+  CompoundSetting: "Mescola",
+};
+
+// Solo per le sezioni per-ruota: altrove la posizione e' gia' dentro il
+// nome della chiave (FrontAntiSwaySetting).
+const SECTION_POSITION: Record<string, string> = {
+  FRONT: "anteriore",
+  REAR: "posteriore",
+  FRONTLEFT: "anteriore sinistra",
+  FRONTRIGHT: "anteriore destra",
+  REARLEFT: "posteriore sinistra",
+  REARRIGHT: "posteriore destra",
+};
+
+// Aggiunge il nome leggibile a un elenco di modifiche, cosi' il client
+// non deve conoscere la mappa: vive in un punto solo.
+export function withSettingLabels<T extends { setting: string }>(
+  changes: T[] | undefined
+) {
+  return (changes ?? []).map((change) => ({
+    ...change,
+    label: settingLabel(change.setting),
+  }));
+}
+
+export function settingLabel(path: string) {
+  const [section, key] = path.split(".");
+  if (!key) return path;
+
+  const base = KEY_LABELS[key];
+  if (!base) return path;
+
+  const position = SECTION_POSITION[section];
+
+  return position ? `${base} ${position}` : base;
+}
+
 // Etichette per area. Un elenco piatto di 68 voci non fa percepire al
 // modello che esistono leve diverse dal camber: raggruppandole si vede
 // a colpo d'occhio che ci sono aerodinamica, barre, differenziale e
@@ -246,12 +350,14 @@ const AREA_LABELS: Record<string, string> = {
 export function describeAdjustableSettingsByArea(raw: string) {
   const grouped = new Map<string, string[]>();
 
-  for (const entry of describeAdjustableSettings(raw)) {
-    const section = entry.split(".")[0];
-    const label = AREA_LABELS[section] ?? section;
+  // Si raggruppa sulla sezione strutturata, non spezzando il testo
+  // formattato: la riga ora comincia con il nome leggibile, e ricavare
+  // da li' la sezione produceva un'area per ogni singola regolazione.
+  for (const entry of adjustableEntries(raw)) {
+    const label = AREA_LABELS[entry.section] ?? entry.section;
 
     if (!grouped.has(label)) grouped.set(label, []);
-    grouped.get(label)!.push(entry);
+    grouped.get(label)!.push(entry.text);
   }
 
   return [...grouped.entries()].map(([label, entries]) => ({
@@ -260,26 +366,52 @@ export function describeAdjustableSettingsByArea(raw: string) {
   }));
 }
 
-// Elenco compatto delle regolazioni su cui il coach puo' intervenire:
-// percorso, indice attuale e valore leggibile.
-export function describeAdjustableSettings(raw: string) {
+// Nota lasciata da applyClicks al posto del commento originale: dice da
+// dove si e' partiti, non il valore attuale.
+const APPLIED_NOTE = /^era .*\(-?\+?\d+ click\)$/;
+
+// Elenco strutturato delle regolazioni su cui il coach puo' intervenire.
+function adjustableEntries(raw: string) {
   const doc = parseSvm(raw);
   const symmetric = isSymmetric(doc);
 
   const seen = new Set<string>();
-  const out: string[] = [];
+  const out: { path: string; section: string; text: string }[] = [];
 
   for (const setting of doc.settings) {
     if (!relevant(setting)) continue;
 
-    const grouped = symmetric ? SIDE_SECTIONS[setting.section] : undefined;
-    const path = grouped ? `${grouped}.${setting.key}` : setting.path;
+    const groupedSection = symmetric ? SIDE_SECTIONS[setting.section] : undefined;
+    const section = groupedSection ?? setting.section;
+    const path = groupedSection
+      ? `${groupedSection}.${setting.key}`
+      : setting.path;
 
     if (seen.has(path)) continue;
     seen.add(path);
 
-    out.push(`${path} = ${setting.index} (${setting.comment})`);
+    // Su un setup gia' modificato il commento non contiene piu' il
+    // valore leggibile ma la nota "era X (+n click)": spacciarla per
+    // valore attuale farebbe ragionare il coach su un dato vecchio. Il
+    // valore vero lo ricalcola il gioco al caricamento, qui resta
+    // affidabile solo l'indice.
+    const value = APPLIED_NOTE.test(setting.comment)
+      ? `valore ricalcolato dal gioco, ${setting.comment}`
+      : setting.comment;
+
+    // Il nome leggibile viene prima perche' e' quello che il coach deve
+    // usare parlando col pilota; il percorso resta perche' e' quello che
+    // deve copiare in "setting".
+    out.push({
+      path,
+      section,
+      text: `${settingLabel(path)} — ${path} = ${setting.index} (${value})`,
+    });
   }
 
   return out;
+}
+
+export function describeAdjustableSettings(raw: string) {
+  return adjustableEntries(raw).map((e) => e.text);
 }

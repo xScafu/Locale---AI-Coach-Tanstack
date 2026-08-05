@@ -36,6 +36,9 @@ export type SetupChange = {
   setting: string;
   deltaClicks: number;
   reason: string;
+  // Nome leggibile ("Ala posteriore"), aggiunto dal server: la mappa
+  // dei nomi vive solo li', non duplicata qui.
+  label?: string;
 };
 
 export type Setup = {

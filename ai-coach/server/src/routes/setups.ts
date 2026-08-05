@@ -10,7 +10,7 @@ import {
 } from "../repositories/setup.repository";
 
 import { parseSvmFile } from "../services/setup-import.service";
-import { applyClicks } from "../services/svm.service";
+import { applyClicks, withSettingLabels } from "../services/svm.service";
 import { getLatestSetupChanges } from "../repositories/message.repository";
 
 const setups = new Hono();
@@ -85,7 +85,7 @@ setups.get("/suggestions", async (c) => {
     );
 
     return c.json({
-      changes,
+      changes: withSettingLabels(changes),
       createdAt: changes.length > 0 ? message.createdAt : null,
     });
   } catch {
