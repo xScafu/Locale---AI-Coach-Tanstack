@@ -261,6 +261,59 @@ Quattro trappole dei dati, tutte trovate confrontando i canali tra loro:
   misure non sono simmetriche nemmeno per ruota: le destre stanno fuori tre volte
   più delle sinistre, perché i cordoli si prendono da un lato solo.
 
+### Confronto fra telemetrie
+
+`services/telemetry-compare.service.ts` confronta due giri — il proprio e uno di
+**riferimento** — e dice dove se ne va il tempo.
+
+Il confronto si fa **per distanza, non per tempo**. Due giri passano dagli stessi punti
+in istanti diversi: allineandoli sul tempo, dopo la prima curva si confronterebbe la
+propria staccata con l'uscita di curva dell'altro. Su una griglia di metri dal traguardo
+(passo 5 m) ogni confronto è fra due auto nello stesso punto di pista.
+
+Il numero che conta è il **delta cumulativo**: quanto tempo si è perso dall'inizio del
+giro fino a lì. La sua pendenza dice dove il tempo se ne va.
+
+**L'attribuzione è per sezioni, non per curve.** Ogni sezione va dall'ingresso di una
+curva all'ingresso della successiva, cioè curva **più il rettilineo che la segue**, e le
+sezioni sommate danno lo scarto totale. Con la sola finestra ingresso-uscita, su un giro
+più lento di 6.5s se ne spiegavano 1.5: una curva sbagliata la si paga nei metri dopo.
+
+**La numerazione delle curve è quella del profilo del circuito**, non ricavata dai due
+giri: il coach ha l'ordine di chiamare le curve per numero, e due numerazioni diverse
+nello stesso prompt lo farebbero contraddire nella stessa risposta.
+
+Due cose falsano il confronto, e vanno distinte perché una è un evento vero e l'altra no:
+
+- **Il giro con una fermata dentro** (`stopped`, minima sotto 20 km/h) non è un giro
+  lento: è un testacoda o un rientro. Su un file reale un giro con l'auto ferma a 0.0 km/h
+  si prende 5.6 dei 6.5 secondi di scarto in una curva sola, che detto al pilota suona
+  come "sei lento lì".
+- **I salti di `Lap Dist`** (`glitches`, e le curve toccate risultano `unreliable`).
+  `Lap Dist` non è la distanza percorsa: è la posizione proiettata sulla linea del
+  tracciato, e dove la pista si ripiega la proiezione scatta in avanti. A COTA lo stesso
+  punto (3787 m) scatta di 9 metri in un decimo — 328 km/h — in tre giri diversi, con la
+  velocità ferma a 72 km/h. Un salto in un giro solo produce un picco di quasi un secondo
+  nel delta, che poi rientra.
+
+  Il segnale che separa i due casi è il confronto fra i canali: nel testacoda la velocità
+  crolla e la distanza si ferma, nel salto la velocità non cambia e la distanza corre.
+  Le sezioni marcate `unreliable` restano visibili ma escluse dalle classifiche, sia a
+  schermo sia nel prompt.
+
+### Import di riferimento
+
+`telemetry_imports.isReference` marca il giro con cui confrontarsi: uno per circuito,
+come `setups.isActive` è uno per auto.
+
+**Un riferimento NON deve passare da `syncImportFromMetadata`.** Quella funzione legge
+`DriverName` e crea o attiva quel pilota, poi crea auto e circuito sotto di lui e
+riscrive il profilo del tracciato. Su un file di un altro pilota vorrebbe dire spostare
+l'app su di lui — Garage, Circuiti e Telemetria si svuotano dei propri dati — e cambiare
+la numerazione delle curve che il coach usa per parlare. Il percorso alternativo è
+`linkReferenceImport`, che copia i metadata e aggancia il circuito **fra quelli già
+esistenti**, senza creare né attivare niente.
+
 ### Import: un file configura l'app
 
 `POST /api/telemetry/import` non salva solo un file: `import-sync.service.ts` legge i
@@ -440,6 +493,15 @@ inutile "giro 8".
 - Le query DuckDB in `telemetry.service.ts` sono costruite per interpolazione di stringa
   (i nomi di tabella/canale vengono dal file caricato); `runReadOnlyQuery` esegue SQL
   arbitrario dal client aggiungendo solo un `LIMIT 200` se manca.
+- I file `.duckdb` si aprono in **sola lettura** (`duckdb.OPEN_READONLY`): l'app non ci
+  scrive mai. In lettura e scrittura DuckDB prende un lock esclusivo, e un secondo
+  processo — uno script di analisi mentre gira il dev server — non riesce ad aprirli.
+  Aprire un percorso **inesistente** non è un errore per DuckDB: crea un database vuoto,
+  e il sintomo diventa "Table with name channelsList does not exist" con un `.duckdb` da
+  12 KB rimasto fra gli orfani. Per questo `openDb` controlla prima che il file esista.
+- I tempi sul giro si scrivono **mm:ss:mmm** (`01:58:300`). La funzione è duplicata a
+  mano in `client/src/lib/lap-time.ts` e in `context.service.ts`, perché i due workspace
+  non condividono codice: se cambia il formato, va cambiato in entrambi.
 - **`npm run build:server` non compila** (98 errori già su `main`): `tsconfig.json` del
   server usa `moduleResolution: NodeNext`, che pretende l'estensione `.js` in ogni import
   relativo, mentre il codice non la mette da nessuna parte. Non è emerso prima perché

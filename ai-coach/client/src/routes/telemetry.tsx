@@ -1,24 +1,27 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { Trash2, Upload } from "lucide-react";
+import { Flag, Trash2, Upload } from "lucide-react";
 
 import { useActivePilot } from "@/hooks/useActivePilot";
 import { getCars } from "@/services/garage.api";
 import {
   deleteTelemetryImport,
+  getComparison,
   getLapChannels,
   getLapTelemetry,
   getTelemetryChannels,
   getTelemetryImports,
   getTelemetryLaps,
   runTelemetryQuery,
+  setTelemetryReference,
   uploadTelemetry,
   type TelemetryImport,
   type TelemetryPoint,
 } from "@/services/telemetry.api";
 import { getTrack, getTracks, saveTrackLayout } from "@/services/track.api";
 import ChannelPicker from "@/components/telemetry/ChannelPicker";
+import ComparisonCard from "@/components/telemetry/ComparisonCard";
 import PageHeader from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -402,6 +405,9 @@ function Telemetry() {
   // I canali aggiunti dal selettore. Vanno azzerati cambiando import:
   // file di auto diverse non hanno gli stessi canali.
   const [pickedChannels, setPickedChannels] = useState<string[]>([]);
+  // Carica il file come giro di riferimento invece che come propria
+  // sessione: il server salta la sincronizzazione da metadata.
+  const [uploadAsReference, setUploadAsReference] = useState(false);
   const [trackId, setTrackId] = useState("");
   const [savingReference, setSavingReference] = useState(false);
 
@@ -480,6 +486,16 @@ function Telemetry() {
       !!selectedImport && selectedLap !== null && pickedChannels.length > 0,
   });
 
+  // Il confronto dell'import selezionato con il riferimento del suo
+  // circuito. Su un riferimento non ha senso: si confronterebbe con se'
+  // stesso.
+  const comparisonQuery = useQuery({
+    queryKey: ["telemetry-comparison", selectedImport?.id, selectedLap],
+    queryFn: () =>
+      getComparison(selectedImport!.id, { lap: selectedLap ?? undefined }),
+    enabled: !!selectedImport && !selectedImport.isReference,
+  });
+
   const points = lapTelemetryQuery.data?.points ?? [];
 
   function togglePickedChannel(name: string) {
@@ -500,12 +516,21 @@ function Telemetry() {
     setUploading(true);
 
     try {
-      await uploadTelemetry(file, carId || undefined);
+      await uploadTelemetry(file, carId || undefined, uploadAsReference);
       await queryClient.invalidateQueries({ queryKey: ["telemetry"] });
       setFile(null);
     } finally {
       setUploading(false);
     }
+  }
+
+  async function handleToggleReference(item: TelemetryImport) {
+    await setTelemetryReference(item.id, !item.isReference);
+    await queryClient.invalidateQueries({ queryKey: ["telemetry"] });
+    // Il confronto dipende da quale import e' il riferimento.
+    await queryClient.invalidateQueries({
+      queryKey: ["telemetry-comparison"],
+    });
   }
 
   async function handleDeleteImport(id: string) {
@@ -612,6 +637,26 @@ function Telemetry() {
               {uploading ? "Importazione..." : "Importa"}
             </Button>
           </div>
+
+          <div className="mt-4 space-y-1.5">
+            <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="accent-primary size-4"
+                checked={uploadAsReference}
+                onChange={(e) => setUploadAsReference(e.target.checked)}
+              />
+              Carica come giro di riferimento
+            </label>
+
+            <p className="text-muted-foreground text-xs leading-relaxed">
+              Il riferimento è il giro con cui confrontarsi: una tua sessione
+              riuscita bene, o quella di qualcuno che gira forte. Non
+              riconfigura l'app — pilota, auto e circuito attivi restano i
+              tuoi, e le curve del circuito non vengono ricalcolate sul suo
+              giro. Ce n'è uno per circuito.
+            </p>
+          </div>
         </CardContent>
       </Card>
 
@@ -655,12 +700,32 @@ function Telemetry() {
                     {item.status}
                   </Badge>
 
+                  {item.isReference && <Badge>riferimento</Badge>}
+
                   {item.errorMessage && (
                     <span className="text-destructive text-xs">
                       {item.errorMessage}
                     </span>
                   )}
                 </div>
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="mt-2"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleToggleReference(item);
+                  }}
+                  title={
+                    item.isReference
+                      ? "Smetti di usarlo come riferimento"
+                      : "Usa questo giro come riferimento per il suo circuito"
+                  }
+                >
+                  <Flag className="size-3.5" />
+                  {item.isReference ? "Togli riferimento" : "Usa come riferimento"}
+                </Button>
 
                 <Button
                   variant="ghost"
@@ -931,6 +996,14 @@ function Telemetry() {
             )}
           </CardContent>
         </Card>
+      )}
+
+      {selectedImport && !selectedImport.isReference && (
+        <ComparisonCard
+          comparison={comparisonQuery.data?.comparison ?? null}
+          isPending={comparisonQuery.isPending}
+          error={comparisonQuery.data?.error ?? null}
+        />
       )}
 
       <Card>

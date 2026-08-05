@@ -12,6 +12,8 @@ export type TelemetryImport = {
   errorMessage: string | null;
   metadata: string | null;
   recordedAt: number | null;
+  // Il giro con cui confrontarsi su questo circuito. Uno per pista.
+  isReference: boolean;
 };
 
 export type SyncEntity = {
@@ -46,10 +48,18 @@ export type UploadResult = {
   error?: string;
 };
 
-export async function uploadTelemetry(file: File, carId?: string) {
+export async function uploadTelemetry(
+  file: File,
+  carId?: string,
+  asReference?: boolean
+) {
   const formData = new FormData();
   formData.append("file", file);
   if (carId) formData.append("carId", carId);
+  // Un riferimento non riconfigura l'app: il server salta del tutto la
+  // sincronizzazione da metadata, che altrimenti renderebbe attivo il
+  // pilota scritto nel file.
+  if (asReference) formData.append("asReference", "true");
 
   const response = await fetch(`${API_URL}/api/telemetry/import`, {
     method: "POST",
@@ -143,6 +153,94 @@ export type ChannelSeries = {
   // TelemetryPoint dello stesso giro: stesso indice, stesso istante.
   values: number[][];
 };
+
+export async function setTelemetryReference(id: string, isReference: boolean) {
+  const response = await fetch(`${API_URL}/api/telemetry/${id}/reference`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ isReference }),
+  });
+
+  return response.json() as Promise<{ ok?: boolean; error?: string }>;
+}
+
+export type CornerComparison = {
+  number: number;
+  entryM: number;
+  exitM: number;
+  // Dentro la curva.
+  deltaSeconds: number;
+  // Nel rettilineo che la segue.
+  exitDeltaSeconds: number;
+  // I due sommati. Le sezioni piastrellano il giro, quindi sommate danno
+  // lo scarto totale.
+  sectionDeltaSeconds: number;
+  minSpeedKmh: number | null;
+  referenceMinSpeedKmh: number | null;
+  brakingPointM: number | null;
+  referenceBrakingPointM: number | null;
+  brakingDeltaM: number | null;
+  // Qui "Lap Dist" salta in uno dei due giri: il delta esiste ma non
+  // vuol dire niente.
+  unreliable: boolean;
+};
+
+export type ComparisonSample = {
+  distanceM: number;
+  deltaSeconds: number;
+  speedKmh: number;
+  referenceSpeedKmh: number;
+  throttlePct: number;
+  referenceThrottlePct: number;
+  brakePct: number;
+  referenceBrakePct: number;
+};
+
+export type LapSummary = {
+  importId: string | null;
+  lapNumber: number;
+  seconds: number;
+  minSpeedKmh: number;
+  stopped: boolean;
+};
+
+export type LapComparison = {
+  lap: LapSummary;
+  reference: LapSummary & {
+    driverName: string | null;
+    carName: string | null;
+    recordingTime: string | null;
+  };
+  trackName: string | null;
+  sameCar: boolean;
+  gapSeconds: number;
+  glitches: { fromM: number; toM: number }[];
+  beforeFirstCornerSeconds: number | null;
+  lengthM: number;
+  samples: ComparisonSample[];
+  corners: CornerComparison[];
+};
+
+export async function getComparison(
+  id: string,
+  options: { against?: string; lap?: number; againstLap?: number } = {}
+) {
+  const params = new URLSearchParams();
+  if (options.against) params.set("against", options.against);
+  if (options.lap) params.set("lap", String(options.lap));
+  if (options.againstLap) params.set("againstLap", String(options.againstLap));
+
+  const query = params.toString();
+
+  const response = await fetch(
+    `${API_URL}/api/telemetry/${id}/compare${query ? `?${query}` : ""}`
+  );
+
+  return response.json() as Promise<{
+    comparison?: LapComparison;
+    error?: string;
+  }>;
+}
 
 export async function getLapChannels(
   id: string,

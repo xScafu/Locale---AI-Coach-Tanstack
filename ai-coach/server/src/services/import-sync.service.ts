@@ -5,6 +5,7 @@ import { namesMatch, normalize } from "./track-profile.service";
 import {
   activatePilot,
   createPilot,
+  getActivePilot,
   getAllPilots,
 } from "../repositories/profile.repository";
 import {
@@ -169,6 +170,82 @@ async function syncTrack(
   await activateTrack(id);
 
   return { id, name: trackName, action: "created", activated: true };
+}
+
+export type ReferenceLinkResult = {
+  driverName: string | null;
+  carName: string | null;
+  trackName: string | null;
+  // Il circuito dell'app a cui il riferimento e' stato agganciato. Null
+  // se nessuno dei circuiti del pilota attivo corrisponde: il file resta
+  // caricato, ma finche' non importi una tua sessione di quella pista
+  // non c'e' niente con cui confrontarlo.
+  trackId: string | null;
+};
+
+// Il gemello silenzioso di syncImportFromMetadata, per i file di
+// riferimento.
+//
+// Copia i metadata e prova ad agganciare il circuito, e basta: NON crea
+// il pilota, NON crea l'auto, NON attiva niente e NON tocca il profilo
+// del tracciato.
+//
+// La differenza non e' un dettaglio. Un riferimento e' la telemetria di
+// qualcun altro: passarlo dalla sincronizzazione normale creerebbe un
+// pilota col suo nome e lo renderebbe ATTIVO, spostando l'app su di lui
+// — Garage, Circuiti e Telemetria si svuoterebbero dei dati del
+// proprietario — e riscriverebbe le curve del circuito con quelle del
+// suo giro, cambiando la numerazione che il coach usa per parlare.
+export async function linkReferenceImport(
+  importId: string,
+  filePath: string
+): Promise<ReferenceLinkResult> {
+  const empty: ReferenceLinkResult = {
+    driverName: null,
+    carName: null,
+    trackName: null,
+    trackId: null,
+  };
+
+  try {
+    const metadata = await getMetadata(filePath);
+    const trackName = metadata["TrackName"]?.trim() || null;
+    const recordedAt = parseRecordingTime(metadata["RecordingTime"]);
+
+    // Il circuito si cerca solo fra quelli gia' esistenti del pilota
+    // attivo, e non si crea: creare vorrebbe dire inventare una pista
+    // che il proprietario non ha mai girato.
+    const pilot = await getActivePilot();
+
+    let trackId: string | null = null;
+
+    if (pilot && trackName) {
+      const tracks = await getTracksByPilot(pilot.id);
+
+      const match =
+        tracks.find((t) => normalize(t.name) === normalize(trackName)) ??
+        tracks.find((t) => namesMatch(t.name, trackName)) ??
+        null;
+
+      trackId = match?.id ?? null;
+    }
+
+    await updateTelemetryImport(importId, {
+      trackId,
+      metadata: JSON.stringify(metadata),
+      recordedAt,
+    });
+
+    return {
+      driverName: metadata["DriverName"]?.trim() || null,
+      carName: metadata["CarName"]?.trim() || null,
+      trackName,
+      trackId,
+    };
+  } catch (error) {
+    console.error("[import-sync] aggancio del riferimento fallito:", error);
+    return empty;
+  }
 }
 
 // Legge i metadata del file appena caricato e allinea l'app a quella

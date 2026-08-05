@@ -319,6 +319,20 @@ export const telemetryImports = sqliteTable("telemetry_imports", {
   // da createdAt, che e' quando il file e' stato caricato nell'app.
   recordedAt: integer("recorded_at"),
 
+  // Il giro con cui confrontarsi: la telemetria di qualcuno che gira
+  // forte, o una propria sessione riuscita bene.
+  //
+  // Un import di riferimento NON riconfigura l'app: salta del tutto
+  // syncImportFromMetadata, che altrimenti creerebbe e renderebbe attivo
+  // il pilota scritto nel file e sovrascriverebbe il profilo del
+  // tracciato con le curve di un altro.
+  //
+  // Come `setups.isActive`, l'unicita' e' per circuito e non globale:
+  // ogni pista ha il suo riferimento.
+  isReference: integer("is_reference", { mode: "boolean" })
+    .default(false)
+    .notNull(),
+
   createdAt: integer("created_at")
     .$defaultFn(() => Math.floor(Date.now() / 1000))
     .notNull(),

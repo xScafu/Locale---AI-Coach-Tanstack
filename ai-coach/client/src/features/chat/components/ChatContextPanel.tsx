@@ -1,17 +1,11 @@
 import { Car, Flag, User } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
+import { formatLapTime } from "@/lib/lap-time";
 import { useDashboard } from "@/hooks/useDashboard";
 import { parseTrackProfile } from "@/services/track.api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-
-function formatLapTime(seconds: number) {
-  const m = Math.floor(seconds / 60);
-  const s = seconds - m * 60;
-
-  return m > 0 ? `${m}:${s.toFixed(3).padStart(6, "0")}` : `${s.toFixed(3)}s`;
-}
 
 function ContextCard({
   title,

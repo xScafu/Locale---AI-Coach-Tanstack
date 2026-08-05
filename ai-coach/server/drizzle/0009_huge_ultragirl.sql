@@ -1,0 +1,1 @@
+ALTER TABLE `telemetry_imports` ADD `is_reference` integer DEFAULT false NOT NULL;

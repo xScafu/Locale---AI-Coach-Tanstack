@@ -1,3 +1,30 @@
+// I tempi sul giro nel formato in cui il pilota li legge a schermo,
+// mm:ss:mmm. Averne due diversi — secondi nel prompt, mm:ss:mmm
+// nell'interfaccia — costringerebbe il pilota a convertire a mente ogni
+// numero che il coach gli dice.
+//
+// Gemella di client/src/lib/lap-time.ts. I due workspace non condividono
+// tipi ne' codice: se cambia il formato, va cambiato in entrambi.
+function formatLapTime(seconds: number | null | undefined): string {
+  if (seconds === null || seconds === undefined || !Number.isFinite(seconds)) {
+    return "-";
+  }
+
+  // Arrotondare prima di spezzare: con 119.9996 i secondi verrebbero 59
+  // e i millesimi 1000.
+  const total = Math.round(seconds * 1000);
+
+  const minutes = Math.floor(total / 60000);
+  const secs = Math.floor((total % 60000) / 1000);
+  const millis = total % 1000;
+
+  return [
+    String(minutes).padStart(2, "0"),
+    String(secs).padStart(2, "0"),
+    String(millis).padStart(3, "0"),
+  ].join(":");
+}
+
 // Trasforma il profilo derivato dalla telemetria in poche righe dense.
 // Le curve non hanno nome perche' sono rilevate dai dati, non da una
 // mappa: il riferimento condiviso col pilota e' la distanza dal
@@ -38,7 +65,7 @@ function buildTrackSection(track: any) {
   // automatico di un import precedente, quindi presentarlo come
   // "dichiarato dal pilota" affermerebbe qualcosa che non sappiamo.
   if (track.referenceLapSeconds) {
-    lines.push(`Tempo di riferimento del pilota: ${track.referenceLapSeconds}s`);
+    lines.push(`Tempo di riferimento del pilota: ${formatLapTime(track.referenceLapSeconds)}`);
   }
   if (track.notes) lines.push(`Note del pilota: ${track.notes}`);
 
@@ -50,7 +77,7 @@ function buildTrackSection(track: any) {
     return lines.join("\n");
   }
 
-  lines.push(`Giro migliore analizzato: ${profile.bestLapSeconds}s`);
+  lines.push(`Giro migliore analizzato: ${formatLapTime(profile.bestLapSeconds)}`);
   lines.push("");
   lines.push(
     "Profilo curve dal giro migliore del pilota. Le curve si identificano " +
@@ -88,8 +115,8 @@ function buildTrackSection(track: any) {
 
     if (reference.theoreticalLapSeconds !== null) {
       lines.push(
-        `- Giro migliore ${reference.bestLapSeconds}s, giro teorico ` +
-          `${reference.theoreticalLapSeconds}s (somma dei settori migliori): ` +
+        `- Giro migliore ${formatLapTime(reference.bestLapSeconds)}, giro teorico ` +
+          `${formatLapTime(reference.theoreticalLapSeconds)} (somma dei settori migliori): ` +
           `${reference.potentialGainSeconds}s gia' alla portata del pilota ` +
           "senza migliorare nulla di nuovo, solo mettendo insieme cio' che ha " +
           "gia' fatto."
@@ -126,6 +153,8 @@ import type {
   TelemetryDigest,
   WheelValues,
 } from "./telemetry-digest.service";
+import type { LapComparison } from "./telemetry-compare.service";
+import { normalize } from "./track-profile.service";
 
 // Le quattro ruote nell'ordine del file: AS, AD, PS, PD.
 function wheels(values: WheelValues | null, unit: string): string | null {
@@ -138,7 +167,7 @@ function wheels(values: WheelValues | null, unit: string): string | null {
 // giro migliore sparirebbe.
 function buildLapLines(digest: TelemetryDigest): string[] {
   return digest.laps.map((lap) => {
-    const parts = [`${lap.lapTimeSeconds}s`];
+    const parts = [formatLapTime(lap.lapTimeSeconds)];
 
     if (lap.topSpeedKmh) parts.push(`max ${lap.topSpeedKmh} km/h`);
     const tyres = wheels(lap.tyreTempC, "C");
@@ -374,6 +403,223 @@ function buildHandlingLines(digest: TelemetryDigest): string[] {
   return lines;
 }
 
+// Il confronto con il giro di riferimento.
+//
+// La regola di lettura sta scritta nel prompt perche' senza il modello
+// sommerebbe i delta sbagliati: il numero che conta e' la variazione del
+// delta dentro una sezione, non il delta assoluto in un punto, che porta
+// con se' tutto quello che e' successo prima.
+// "2026-08-04T23_00_03Z" -> "4 agosto 2026, 23:00". LMU usa gli
+// underscore al posto dei due punti perche' il valore finisce anche nel
+// nome del file.
+function formatRecordingTime(value: string | null): string | null {
+  if (!value) return null;
+
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2})_(\d{2})/);
+  if (!match) return null;
+
+  const [, year, month, day, hour, minute] = match;
+
+  const mesi = [
+    "gennaio",
+    "febbraio",
+    "marzo",
+    "aprile",
+    "maggio",
+    "giugno",
+    "luglio",
+    "agosto",
+    "settembre",
+    "ottobre",
+    "novembre",
+    "dicembre",
+  ];
+
+  const nome = mesi[Number(month) - 1];
+  if (!nome) return null;
+
+  return `${Number(day)} ${nome} ${year}, ${hour}:${minute}`;
+}
+
+function buildComparisonSection(
+  comparison: LapComparison | null,
+  pilotName: string | null
+): string {
+  if (!comparison) {
+    return `Nessun giro di riferimento per questo circuito.
+
+Se il pilota chiede un confronto, spiegagli che puoi farlo quando avra'
+caricato una telemetria di riferimento dalla pagina Telemetria — la sua
+o quella di qualcun altro che gira forte sullo stesso circuito — e
+marcata come riferimento.`;
+  }
+
+  const lines: string[] = [];
+
+  const driver = comparison.reference.driverName;
+  const car = comparison.reference.carName;
+  const when = formatRecordingTime(comparison.reference.recordingTime);
+
+  // Chi ha guidato il giro di riferimento va detto senza ambiguita'.
+  //
+  // Quando il riferimento e' un'altra sessione dello stesso pilota — il
+  // caso piu' comune, ci si confronta col proprio giro migliore — nel
+  // prompt comparivano due volte lo stesso nome, e il modello ne
+  // concludeva che "non c'e' un riferimento esterno" ignorando tutta la
+  // sezione e ripiegando sui dati del singolo file.
+  const own =
+    !!driver && !!pilotName && normalize(driver) === normalize(pilotName);
+
+  const chi = own
+    ? `un'altra sessione dello stesso pilota${when ? ` (${when})` : ""}`
+    : `${driver ?? "un altro pilota"}${when ? `, ${when}` : ""}`;
+
+  lines.push(
+    `Riferimento: ${chi}${car ? `, ${car}` : ""}, giro ` +
+      `${comparison.reference.lapNumber} in ${formatLapTime(comparison.reference.seconds)}.`
+  );
+
+  lines.push(
+    "Questo confronto e' gia' calcolato dai due file: usalo cosi' com'e'. " +
+      "Non dire che manca un riferimento e non sostituirlo con il confronto " +
+      "fra i giri di una sola sessione, che sta nella sezione CIRCUITO ed e' " +
+      "un'altra cosa."
+  );
+
+  lines.push(
+    `Il giro migliore del pilota: giro ${comparison.lap.lapNumber} in ` +
+      `${formatLapTime(comparison.lap.seconds)}.`
+  );
+
+  const gap = comparison.gapSeconds;
+
+  lines.push(
+    gap > 0
+      ? `Scarto: ${gap}s piu' lento del riferimento.`
+      : gap < 0
+        ? `Scarto: ${Math.abs(gap)}s piu' veloce del riferimento.`
+        : "I due giri hanno lo stesso tempo."
+  );
+
+  if (!comparison.sameCar) {
+    lines.push(
+      "ATTENZIONE: le due auto sono diverse. Le traiettorie e i punti di " +
+        "frenata restano confrontabili, le velocita' molto meno: non dire al " +
+        "pilota che deve passare piu' veloce solo perche' l'altra auto lo fa."
+    );
+  }
+
+  // Un giro con una fermata dentro non e' un giro lento, e i suoi delta
+  // raccontano un incidente invece di un errore di guida.
+  if (comparison.lap.stopped || comparison.reference.stopped) {
+    lines.push(
+      "ATTENZIONE: in uno dei due giri l'auto si e' quasi fermata " +
+        "(testacoda, uscita o rientro ai box). I secondi persi in quel punto " +
+        "non sono un problema di guida: dillo invece di costruirci sopra un " +
+        "consiglio."
+    );
+  }
+
+  const corners = comparison.corners;
+
+  if (corners.length === 0) {
+    return lines.join("\n");
+  }
+
+  lines.push("");
+  lines.push(
+    "Il tempo e' diviso per sezioni: ogni curva porta con se' il " +
+      "rettilineo che la segue, perche' un'uscita lenta si paga nei metri " +
+      "dopo, non dentro la curva. Le sezioni sommate danno lo scarto " +
+      "totale, quindi i valori qui sotto si possono confrontare fra loro " +
+      "e sommare."
+  );
+
+  const describe = (c: (typeof corners)[number]) => {
+    const parts: string[] = [];
+
+    const sign = c.sectionDeltaSeconds > 0 ? "+" : "";
+    parts.push(
+      `Curva ${c.number}: ${sign}${c.sectionDeltaSeconds}s ` +
+        `(in curva ${c.deltaSeconds > 0 ? "+" : ""}${c.deltaSeconds}, ` +
+        `in uscita ${c.exitDeltaSeconds > 0 ? "+" : ""}${c.exitDeltaSeconds})`
+    );
+
+    if (c.minSpeedKmh !== null && c.referenceMinSpeedKmh !== null) {
+      parts.push(
+        `minima ${c.minSpeedKmh} contro ${c.referenceMinSpeedKmh} km/h`
+      );
+    }
+
+    if (c.brakingDeltaM !== null && Math.abs(c.brakingDeltaM) >= 5) {
+      parts.push(
+        c.brakingDeltaM > 0
+          ? `stacca ${c.brakingDeltaM} m prima del riferimento`
+          : `stacca ${Math.abs(c.brakingDeltaM)} m dopo il riferimento`
+      );
+    }
+
+    return `- ${parts.join(", ")}`;
+  };
+
+  // Sotto i cinque centesimi la differenza e' rumore di misura: a 10Hz un
+  // campione vale un decimo, e riportarla inviterebbe a inseguire
+  // decimali che non esistono.
+  const SOGLIA = 0.05;
+
+  // Le sezioni con un salto di "Lap Dist" restano fuori da entrambe le
+  // classifiche: il loro delta e' un artefatto del canale, e un salto in
+  // un giro solo vale quasi un secondo.
+  const attendibili = corners.filter((c) => !c.unreliable);
+  const scartate = corners.filter((c) => c.unreliable);
+
+  const perse = attendibili
+    .filter((c) => c.sectionDeltaSeconds >= SOGLIA)
+    .sort((a, b) => b.sectionDeltaSeconds - a.sectionDeltaSeconds)
+    .slice(0, 6);
+
+  const guadagnate = attendibili
+    .filter((c) => c.sectionDeltaSeconds <= -SOGLIA)
+    .sort((a, b) => a.sectionDeltaSeconds - b.sectionDeltaSeconds)
+    .slice(0, 4);
+
+  if (perse.length > 0) {
+    lines.push("");
+    lines.push("Dove il pilota perde tempo:");
+    lines.push(...perse.map(describe));
+  }
+
+  // Anche i tratti in guadagno servono: senza, il coach vede solo una
+  // lista di colpe e propone di cambiare cose che gia' funzionano.
+  if (guadagnate.length > 0) {
+    lines.push("");
+    lines.push("Dove invece il pilota e' piu' veloce del riferimento:");
+    lines.push(...guadagnate.map(describe));
+  }
+
+  if (perse.length === 0 && guadagnate.length === 0) {
+    lines.push("");
+    lines.push(
+      "Nessuna sezione con uno scarto superiore a mezzo decimo: i due giri " +
+        "sono equivalenti curva per curva."
+    );
+  }
+
+  if (scartate.length > 0) {
+    lines.push("");
+    lines.push(
+      `Escluse dal confronto le curve ${scartate
+        .map((c) => c.number)
+        .join(", ")}: li' il canale della distanza sul giro fa un salto in ` +
+        "uno dei due file e il tempo calcolato non e' attendibile. NON dire " +
+        "al pilota che perde o guadagna tempo in quelle curve. Se te lo " +
+        "chiede, spiega che in quel punto il dato non regge."
+    );
+  }
+
+  return lines.join("\n");
+}
+
 function buildTelemetrySection(digest: TelemetryDigest | null): string {
   if (!digest) {
     return "Nessun dato di telemetria disponibile per l'auto attiva.";
@@ -397,7 +643,7 @@ function buildTelemetrySection(digest: TelemetryDigest | null): string {
     `Giri analizzati: ${digest.lapsAnalyzed} su ${digest.lapsInFile} nel ` +
       "file (il primo esce dai box e l'ultimo e' troncato, quindi sono " +
       `esclusi). Giro migliore: giro ${digest.bestLapNumber} in ` +
-      `${digest.bestLapSeconds}s.`
+      `${formatLapTime(digest.bestLapSeconds)}.`
   );
 
   const electronics = digest.electronics;
@@ -569,6 +815,7 @@ export function buildCoachContext(context: any) {
     coachMemory,
     knowledge,
     telemetry,
+    comparison,
     setup,
   } = context;
 
@@ -625,6 +872,10 @@ ${buildSetupSection(setup, car)}
 
 ${telemetrySection}
 
+===== CONFRONTO CON IL RIFERIMENTO =====
+
+${buildComparisonSection(comparison ?? null, pilot?.name ?? null)}
+
 ===== KNOWLEDGE BASE =====
 
 ${knowledgeSection}
@@ -653,6 +904,17 @@ Istruzioni:
   file. Non trattarli come una costante dell'auto: se il pilota descrive
   un problema che i dati non mostrano, può semplicemente essere successo
   in un'altra sessione.
+- Quando c'è un confronto con il riferimento, **parti dalle sezioni che
+  costano di più** invece di commentare tutto il giro: due o tre punti su
+  cui lavorare valgono più di un elenco completo. Di' quanto vale ciascuno
+  in secondi, così il pilota sa cosa gli conviene provare per primo.
+- Distingui sempre il tempo perso **in** curva da quello perso **in
+  uscita**: sono due errori diversi. In curva si guadagna con la
+  traiettoria e la velocità di percorrenza, in uscita con il punto in cui
+  si riapre il gas e con la trazione, che dipende anche dal setup.
+- Il confronto dice DOVE si perde, non PERCHÉ. Il perché va cercato negli
+  altri dati — gomme, TC, sterzo, staccata — o chiesto al pilota. Non
+  inventare una causa per far tornare il discorso.
 - **Chiama sempre le curve per numero**: "curva 7", mai "la curva a
   3588 m". Le distanze nel profilo servono a te per riconoscerle e per
   ragionare sulle staccate, ma al pilota non dicono nulla: lui in pista

@@ -14,16 +14,10 @@ import {
   type ImportSync,
   type SyncEntity,
 } from "@/services/telemetry.api";
+import { formatLapTime } from "@/lib/lap-time";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-
-function formatLapTime(seconds: number) {
-  const m = Math.floor(seconds / 60);
-  const s = seconds - m * 60;
-
-  return m > 0 ? `${m}:${s.toFixed(3).padStart(6, "0")}` : `${s.toFixed(3)}s`;
-}
 
 function SyncRow({ label, entity }: { label: string; entity: SyncEntity | null }) {
   if (!entity) {

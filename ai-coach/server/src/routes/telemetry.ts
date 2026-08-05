@@ -3,10 +3,12 @@ import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Hono } from "hono";
 import {
+  clearReferenceImport,
   createTelemetryImport,
   deleteTelemetryImport,
   getTelemetryImportById,
   getTelemetryImports,
+  setReferenceImport,
   updateTelemetryImport,
 } from "../repositories/telemetry.repository";
 
@@ -23,7 +25,16 @@ import {
 
 import { forgetDigest } from "../services/telemetry-digest.service";
 
-import { syncImportFromMetadata } from "../services/import-sync.service";
+import {
+  compareLaps,
+  cornersForImport,
+  findReferenceFor,
+} from "../services/telemetry-compare.service";
+
+import {
+  linkReferenceImport,
+  syncImportFromMetadata,
+} from "../services/import-sync.service";
 
 const telemetry = new Hono();
 const STORAGE_DIR = path.resolve("./data/telemetry");
@@ -113,6 +124,10 @@ telemetry.post("/import", async (c) => {
   const carId =
     typeof body.carId === "string" && body.carId ? body.carId : null;
 
+  // Un riferimento e' la telemetria con cui confrontarsi, spesso di un
+  // altro pilota: va caricata senza che l'app si riconfiguri su di lui.
+  const asReference = body.asReference === "true";
+
   if (!file || typeof file === "string") {
     return c.json(
       { error: "file is required (multipart form field 'file')" },
@@ -134,12 +149,16 @@ telemetry.post("/import", async (c) => {
 
   await createTelemetryImport({
     id,
-    carId,
+    // Un riferimento non appartiene a un'auto del garage: e' il giro di
+    // un altro, e agganciarlo a un'auto lo farebbe comparire fra le
+    // proprie sessioni.
+    carId: asReference ? null : carId,
     fileName: file.name,
     filePath,
     tables: null,
     status: "pending",
     errorMessage: null,
+    isReference: asReference,
   });
 
   try {
@@ -149,6 +168,16 @@ telemetry.post("/import", async (c) => {
       tables: JSON.stringify(tables),
       status: "parsed",
     });
+
+    if (asReference) {
+      const link = await linkReferenceImport(id, filePath);
+
+      // L'unicita' e' per circuito: caricare un nuovo riferimento a
+      // Monza non tocca quello di Spa.
+      await setReferenceImport(id, link.trackId);
+
+      return c.json({ id, status: "parsed", tables, reference: link });
+    }
 
     // Allinea l'app alla sessione contenuta nel file: pilota, auto e
     // circuito vengono riconosciuti o creati e resi attivi, e il
@@ -309,6 +338,80 @@ telemetry.get("/:id/laps/:lapNumber/channels", async (c) => {
   try {
     const series = await getLapChannelSeries(item.filePath, lapNumber, names);
     return c.json({ series });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Errore sconosciuto";
+    return c.json({ error: message }, 500);
+  }
+});
+
+// Marca o smarca un import gia' caricato come riferimento. Serve per
+// eleggere a riferimento una propria sessione riuscita bene, senza
+// doverla ricaricare.
+telemetry.put("/:id/reference", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json().catch(() => ({}));
+  const isReference = body.isReference !== false;
+
+  const item = await getTelemetryImportById(id);
+  if (!item) {
+    return c.json({ error: "Import not found" }, 404);
+  }
+
+  if (isReference) {
+    await setReferenceImport(id, item.trackId);
+  } else {
+    await clearReferenceImport(id);
+  }
+
+  return c.json({ ok: true, isReference });
+});
+
+// Il confronto fra il giro di un import e quello di un altro. Senza
+// `against` usa il riferimento del circuito, che e' il caso normale.
+telemetry.get("/:id/compare", async (c) => {
+  const id = c.req.param("id");
+
+  const item = await getTelemetryImportById(id);
+  if (!item) {
+    return c.json({ error: "Import not found" }, 404);
+  }
+
+  const againstId = c.req.query("against");
+
+  const reference = againstId
+    ? await getTelemetryImportById(againstId)
+    : await findReferenceFor(item);
+
+  if (!reference) {
+    return c.json(
+      { error: "Nessun riferimento disponibile per questo circuito" },
+      404
+    );
+  }
+
+  const lapNumber = Number(c.req.query("lap")) || undefined;
+  const referenceLapNumber = Number(c.req.query("againstLap")) || undefined;
+
+  try {
+    const comparison = await compareLaps(item.filePath, reference.filePath, {
+      lapNumber,
+      referenceLapNumber,
+      corners: await cornersForImport(item),
+      importId: item.id,
+      referenceImportId: reference.id,
+    });
+
+    if (!comparison) {
+      return c.json(
+        {
+          error:
+            "Confronto non possibile: circuiti diversi, o giri non analizzabili",
+        },
+        400
+      );
+    }
+
+    return c.json({ comparison });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Errore sconosciuto";
     return c.json({ error: message }, 500);

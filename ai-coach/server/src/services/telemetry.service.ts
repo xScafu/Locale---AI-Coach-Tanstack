@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+
 import duckdb from "duckdb";
 
 export type TableInfo = {
@@ -12,16 +14,40 @@ function openDb(filePath: string): Promise<duckdb.Database> {
   const cached = dbCache.get(filePath);
   if (cached) return Promise.resolve(cached);
 
-  return new Promise((resolve, reject) => {
-    const database = new duckdb.Database(filePath, (err) => {
-      if (err) {
-        reject(err);
-        return;
-      }
+  // Aprire un percorso inesistente NON e' un errore per DuckDB: crea un
+  // database vuoto e lo lascia li'. Il sintomo diventa poi "Table with
+  // name channelsList does not exist", che manda a cercare un problema
+  // nel file invece che nel percorso, e intanto sul disco resta un
+  // .duckdb da 12 KB che l'app conta fra gli orfani.
+  if (!existsSync(filePath)) {
+    return Promise.reject(
+      new Error(`File di telemetria non trovato: ${filePath}`)
+    );
+  }
 
-      dbCache.set(filePath, database);
-      resolve(database);
-    });
+  // Sola lettura, perche' l'app non scrive MAI nei file di telemetria:
+  // sono la fonte di verita' cosi' come li esporta il simulatore.
+  //
+  // Non e' solo igiene. In lettura e scrittura DuckDB prende un lock
+  // esclusivo sul file, e un secondo processo — uno script di analisi, o
+  // una seconda istanza del server — non riesce nemmeno ad aprirlo. In
+  // sola lettura convivono. In piu' il vincolo vale anche per le query
+  // che arrivano dal client tramite runReadOnlyQuery, dove finora a
+  // impedire una scrittura c'era solo un controllo sul prefisso "select".
+  return new Promise((resolve, reject) => {
+    const database = new duckdb.Database(
+      filePath,
+      duckdb.OPEN_READONLY,
+      (err) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+
+        dbCache.set(filePath, database);
+        resolve(database);
+      }
+    );
   });
 }
 
@@ -429,6 +455,30 @@ export async function computeLapSegments(
 // comunque i casi limite.
 export function analysableLaps<T>(segments: T[]): T[] {
   return segments.length >= 3 ? segments.slice(1, -1) : segments;
+}
+
+// I giri utilizzabili per un'analisi e il migliore fra questi.
+//
+// Raccoglie in un posto solo i due filtri che il progetto applica
+// ovunque: via il primo e l'ultimo giro (analysableLaps) e via i
+// frammenti sotto i venti secondi, che sono uscite o rientri ai box.
+export async function findAnalysableLaps(
+  conn: duckdb.Connection,
+  channels: ChannelMeta[],
+  gridFreq: number
+): Promise<{ laps: LapSegment[]; best: LapSegment | null }> {
+  const segments = await computeLapSegments(conn, channels);
+
+  const laps = analysableLaps(segments).filter(
+    (s) => (s.endIdx - s.startIdx + 1) / gridFreq >= 20
+  );
+
+  const best =
+    laps.length > 0
+      ? laps.reduce((b, c) => (c.endIdx - c.startIdx < b.endIdx - b.startIdx ? c : b))
+      : null;
+
+  return { laps, best };
 }
 
 export type LapInfo = { lapNumber: number; startTs: number };

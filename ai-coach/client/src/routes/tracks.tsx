@@ -15,6 +15,7 @@ import {
   type Track,
 } from "@/services/track.api";
 import { useActivePilot } from "@/hooks/useActivePilot";
+import { formatLapTime } from "@/lib/lap-time";
 import PageHeader from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -56,13 +57,6 @@ function toSheetForm(track: Track): SheetForm {
     referenceLapSeconds: track.referenceLapSeconds?.toString() ?? "",
     notes: track.notes ?? "",
   };
-}
-
-function formatLapTime(seconds: number) {
-  const m = Math.floor(seconds / 60);
-  const s = seconds - m * 60;
-
-  return m > 0 ? `${m}:${s.toFixed(3).padStart(6, "0")}` : `${s.toFixed(3)}s`;
 }
 
 function TrackProfileCard({ track }: { track: Track }) {
